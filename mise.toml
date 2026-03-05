@@ -1,0 +1,3 @@
+[tools]
+go = "1"
+golangci-lint = "latest"

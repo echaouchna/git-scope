@@ -93,97 +93,97 @@ func CompleteDirectoryPath(input string) string {
 		return input
 	}
 
-	// Remember if input started with ~
-	hadTilde := strings.HasPrefix(input, "~")
-
-	// Expand tilde for processing
-	path := expandTilde(input)
-
-	// Handle relative paths
-	if !filepath.IsAbs(path) {
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return input
-		}
-		path = absPath
-	}
-
-	// Get the directory and prefix to match
-	dir := filepath.Dir(path)
-	prefix := filepath.Base(path)
-
-	// If the path exists as-is and is a directory, just add trailing slash
-	info, err := os.Stat(path)
-	if err == nil && info.IsDir() {
-		// Path is already a complete directory
-		if hadTilde {
-			home, _ := os.UserHomeDir()
-			if strings.HasPrefix(path, home) {
-				return "~" + strings.TrimPrefix(path, home) + "/"
-			}
-		}
-		if !strings.HasSuffix(path, "/") {
-			return path + "/"
-		}
-		return path
-	}
-
-	// Read the parent directory to find matches
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	path, hadTilde, ok := absoluteCompletionPath(input)
+	if !ok {
 		return input
 	}
+	if done := completeExistingDir(path, hadTilde); done != "" {
+		return done
+	}
 
-	// Find directories that start with the prefix
-	var matches []string
+	dir := filepath.Dir(path)
+	prefix := filepath.Base(path)
+	matches, ok := matchingDirectories(dir, prefix)
+	if !ok || len(matches) == 0 {
+		return input
+	}
+	if len(matches) == 1 {
+		return formatCompletionPath(filepath.Join(dir, matches[0]), hadTilde, true)
+	}
+
+	commonPrefix := longestCommonPrefix(matches)
+	if len(commonPrefix) <= len(prefix) {
+		return input
+	}
+	return formatCompletionPath(filepath.Join(dir, commonPrefix), hadTilde, false)
+}
+
+func absoluteCompletionPath(input string) (path string, hadTilde bool, ok bool) {
+	hadTilde = strings.HasPrefix(input, "~")
+	path = expandTilde(input)
+	if filepath.IsAbs(path) {
+		return path, hadTilde, true
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", hadTilde, false
+	}
+	return absPath, hadTilde, true
+}
+
+func completeExistingDir(path string, hadTilde bool) string {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	return formatCompletionPath(path, hadTilde, true)
+}
+
+func matchingDirectories(dir, prefix string) ([]string, bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, false
+	}
+
+	matches := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
 			matches = append(matches, entry.Name())
 		}
 	}
+	return matches, true
+}
 
-	if len(matches) == 0 {
-		return input
+func longestCommonPrefix(values []string) string {
+	if len(values) == 0 {
+		return ""
 	}
-
-	if len(matches) == 1 {
-		// Unique match - complete it
-		completedPath := filepath.Join(dir, matches[0])
-
-		// Convert back to ~ format if it started with ~
-		if hadTilde {
-			home, _ := os.UserHomeDir()
-			if strings.HasPrefix(completedPath, home) {
-				return "~" + strings.TrimPrefix(completedPath, home) + "/"
-			}
-		}
-		return completedPath + "/"
-	}
-
-	// Multiple matches - find longest common prefix
-	commonPrefix := matches[0]
-	for _, match := range matches[1:] {
-		for i := 0; i < len(commonPrefix) && i < len(match); i++ {
-			if commonPrefix[i] != match[i] {
-				commonPrefix = commonPrefix[:i]
+	prefix := values[0]
+	for _, value := range values[1:] {
+		for i := 0; i < len(prefix) && i < len(value); i++ {
+			if prefix[i] != value[i] {
+				prefix = prefix[:i]
 				break
 			}
 		}
-		if len(match) < len(commonPrefix) {
-			commonPrefix = match
+		if len(value) < len(prefix) {
+			prefix = value
 		}
 	}
+	return prefix
+}
 
-	if len(commonPrefix) > len(prefix) {
-		completedPath := filepath.Join(dir, commonPrefix)
-		if hadTilde {
-			home, _ := os.UserHomeDir()
-			if strings.HasPrefix(completedPath, home) {
-				return "~" + strings.TrimPrefix(completedPath, home)
-			}
+func formatCompletionPath(path string, hadTilde, withTrailingSlash bool) string {
+	formatted := path
+	if hadTilde {
+		home, err := os.UserHomeDir()
+		if err == nil && strings.HasPrefix(path, home) {
+			formatted = "~" + strings.TrimPrefix(path, home)
 		}
-		return completedPath
 	}
-
-	return input
+	if withTrailingSlash && !strings.HasSuffix(formatted, "/") {
+		formatted += "/"
+	}
+	return formatted
 }

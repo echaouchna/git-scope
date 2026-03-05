@@ -132,31 +132,46 @@ func parseCommand(args []string) (cmd string, cmdArgs []string) {
 // run executes the requested command using the provided configuration path
 // and command args.
 func run(cmd string, args []string, configPath string) error {
+	if handled, err := runNoConfigCommand(cmd); handled {
+		return err
+	}
+
+	cfg, branchArg, err := buildRunConfig(cmd, args, configPath)
+	if err != nil {
+		return err
+	}
+	return runWithConfig(cmd, cfg, branchArg)
+}
+
+func runNoConfigCommand(cmd string) (bool, error) {
 	switch cmd {
 	case "init":
 		runInit()
-		return nil
+		return true, nil
 	case "issue":
 		runIssue()
-		return nil
+		return true, nil
 	case "scan-all":
 		runScanAll()
-		return nil
+		return true, nil
+	default:
+		return false, nil
 	}
+}
 
-	// Only commands below need config
+func buildRunConfig(cmd string, args []string, configPath string) (*config.Config, string, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return nil, "", fmt.Errorf("failed to load config: %w", err)
 	}
 
 	dirs := args
-	actionArgs := []string{}
-	if cmd == "switch" || cmd == "create-branch" || cmd == "merge-no-ff" {
+	branchArg := ""
+	if needsBranchArg(cmd) {
 		if len(args) < 1 {
-			return fmt.Errorf("%s requires a branch argument", cmd)
+			return nil, "", fmt.Errorf("%s requires a branch argument", cmd)
 		}
-		actionArgs = []string{args[0]}
+		branchArg = args[0]
 		dirs = args[1:]
 	}
 
@@ -166,6 +181,14 @@ func run(cmd string, args []string, configPath string) error {
 		cfg.Roots = getSmartDefaults()
 	}
 
+	return cfg, branchArg, nil
+}
+
+func needsBranchArg(cmd string) bool {
+	return cmd == "switch" || cmd == "create-branch" || cmd == "merge-no-ff"
+}
+
+func runWithConfig(cmd string, cfg *config.Config, branchArg string) error {
 	switch cmd {
 	case "scan":
 		repos, err := scan.ScanRoots(cfg.Roots, cfg.Ignore)
@@ -176,7 +199,6 @@ func run(cmd string, args []string, configPath string) error {
 			return fmt.Errorf("print error: %w", err)
 		}
 		return nil
-
 	case "tui", "":
 		if err := tui.Run(cfg); err != nil {
 			return fmt.Errorf("tui error: %w", err)
@@ -185,12 +207,11 @@ func run(cmd string, args []string, configPath string) error {
 	case "pull-rebase":
 		return runBatchGitAction(cfg, []string{"pull", "--rebase"})
 	case "switch":
-		return runBatchGitAction(cfg, []string{"switch", actionArgs[0]})
+		return runBatchGitAction(cfg, []string{"switch", branchArg})
 	case "create-branch":
-		return runBatchGitAction(cfg, []string{"switch", "-c", actionArgs[0]})
+		return runBatchGitAction(cfg, []string{"switch", "-c", branchArg})
 	case "merge-no-ff":
-		return runBatchGitAction(cfg, []string{"merge", "--no-ff", actionArgs[0]})
-
+		return runBatchGitAction(cfg, []string{"merge", "--no-ff", branchArg})
 	default:
 		usage()
 		return fmt.Errorf("unknown command: %s", cmd)
