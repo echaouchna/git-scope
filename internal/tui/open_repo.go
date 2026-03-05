@@ -22,7 +22,7 @@ type openRepoOption struct {
 }
 
 func (m Model) openRepoOptions() []openRepoOption {
-	opts := make([]openRepoOption, 0, 5)
+	opts := make([]openRepoOption, 0, 6)
 	if m.openRepoHasNeovim {
 		opts = append(opts, openRepoOption{label: "Neovim", action: openRepoActionNeovim})
 	}
@@ -182,8 +182,24 @@ func (m Model) handleOpenRepoMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		if len(opts) == 0 {
-			m.statusMsg = "No matching open options"
-			return m, nil
+			command := strings.TrimSpace(m.openRepoInput.Value())
+			if command == "" {
+				m.statusMsg = "No matching options and command is empty"
+				return m, nil
+			}
+			repoName := m.openRepoName
+			repoPath := m.openRepoPath
+			m.exitOpenRepoMode()
+			m.statusMsg = "Running command in " + repoName + "..."
+			return m, func() tea.Msg {
+				return openEditorMsg{
+					path:   repoPath,
+					cwd:    repoPath,
+					binary: "sh",
+					args:   []string{"-lc", command},
+					label:  "Command",
+				}
+			}
 		}
 		if m.openRepoChoice < 0 || m.openRepoChoice > lastIndex {
 			m.openRepoChoice = 0
@@ -214,10 +230,9 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 	gituiBin := m.openRepoGitUIBin
 	tigBin := m.openRepoTigBin
 
-	m.exitOpenRepoMode()
-
 	switch action {
 	case openRepoActionNeovim:
+		m.exitOpenRepoMode()
 		m.statusMsg = "Opening " + repoName + " in Neovim..."
 		return m, func() tea.Msg {
 			return openEditorMsg{
@@ -229,6 +244,7 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 	case openRepoActionGitUI:
+		m.exitOpenRepoMode()
 		m.statusMsg = "Opening " + repoName + " in GitUI..."
 		return m, func() tea.Msg {
 			return openEditorMsg{
@@ -240,6 +256,7 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 	case openRepoActionTig:
+		m.exitOpenRepoMode()
 		m.statusMsg = "Opening " + repoName + " in Tig..."
 		return m, func() tea.Msg {
 			return openEditorMsg{
@@ -251,6 +268,7 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 	case openRepoActionTigAll:
+		m.exitOpenRepoMode()
 		m.statusMsg = "Opening " + repoName + " in Tig (--all)..."
 		return m, func() tea.Msg {
 			return openEditorMsg{
@@ -262,6 +280,7 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 	case openRepoActionVSCode:
+		m.exitOpenRepoMode()
 		m.statusMsg = "Opening " + repoName + " in VS Code..."
 		return m, func() tea.Msg {
 			return openEditorMsg{
@@ -272,6 +291,7 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 	default:
+		m.exitOpenRepoMode()
 		return m, nil
 	}
 }

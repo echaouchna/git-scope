@@ -346,10 +346,10 @@ func (m Model) renderHelp() string {
 		}
 	case m.state == StateOpenRepo:
 		items = []string{
-			keyBinding("type", "search"),
+			keyBinding("type", "search/cmd"),
 			keyBinding("↑↓", "choose"),
 			keyBinding("pgup/dn", "page"),
-			keyBinding("enter", "confirm"),
+			keyBinding("enter", "confirm/run"),
 			keyBinding("esc", "cancel"),
 		}
 	case m.activePanel != PanelNone:
@@ -535,6 +535,7 @@ func (m Model) renderOpenRepoModal() string {
 		"",
 		strings.Join(listLines, "\n"),
 		"",
+		lipgloss.NewStyle().Foreground(mutedColor).Render("If no options match, Enter runs the typed command in this repository."),
 		lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf("Item %d/%d • Enter confirm • Esc cancel", m.openRepoChoice+1, maxInt(1, len(options)))),
 	}
 	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))

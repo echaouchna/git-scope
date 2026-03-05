@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - Unreleased
+
+### Changed
+- Open Project modal now uses a single input for both option search and custom command entry.
+- When no open-option matches are found, pressing `Enter` now runs the typed command in the selected repository directory.
+- Removed the explicit `Run command...` entry from the Open Project menu.
+- Updated Open Project modal/help text to reflect the new search-or-run behavior.
+
 ## [1.1.0] - 2026-03-05
 
 ### Added

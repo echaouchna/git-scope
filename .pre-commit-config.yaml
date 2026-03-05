@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: version-sync
+        name: version sync (CHANGELOG vs app.Version)
+        entry: bash scripts/check-version-sync.sh
+        language: system
+        pass_filenames: false
+
+      - id: gofmt
+        name: gofmt
+        entry: bash -c 'gofmt -w "$@"' --
+        language: system
+        files: \.go$
+
+      - id: golangci-lint
+        name: golangci-lint (mise)
+        entry: mise exec -- golangci-lint run --enable gocritic ./...
+        language: system
+        pass_filenames: false
+
+      - id: go-test
+        name: go test
+        entry: go test ./...
+        language: system
+        pass_filenames: false

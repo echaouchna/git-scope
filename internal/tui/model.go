@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -412,6 +413,7 @@ func (m Model) GetFilterModeName() string {
 // reposToRows converts repos to table rows with status indicators
 func (m Model) reposToRows(repos []model.Repo) []table.Row {
 	layout := m.currentTableLayout()
+	nameCounts := m.repoNameCounts()
 
 	rows := make([]table.Row, 0, len(repos))
 	for _, r := range repos {
@@ -431,10 +433,12 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 			selected = "✓"
 		}
 
+		displayName := m.displayRepoName(r, nameCounts)
+
 		rows = append(rows, table.Row{
 			selected,
 			status,
-			truncateString(r.Name, layout.repoWidth),
+			truncateString(displayName, layout.repoWidth),
 			truncateString(r.Status.Branch, layout.branchWidth),
 			formatNumber(r.Status.Staged),
 			formatNumber(r.Status.Unstaged),
@@ -443,6 +447,45 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 		})
 	}
 	return rows
+}
+
+func (m Model) repoNameCounts() map[string]int {
+	counts := make(map[string]int, len(m.repos))
+	for _, r := range m.repos {
+		counts[r.Name]++
+	}
+	return counts
+}
+
+func (m Model) displayRepoName(repo model.Repo, nameCounts map[string]int) string {
+	if nameCounts[repo.Name] <= 1 {
+		return repo.Name
+	}
+	return repo.Name + " · " + parentPathHint(repo.Path, 3)
+}
+
+func parentPathHint(repoPath string, maxSegments int) string {
+	parent := filepath.Clean(filepath.Dir(repoPath))
+	if parent == "." || parent == string(filepath.Separator) {
+		return parent
+	}
+
+	parts := strings.Split(parent, string(filepath.Separator))
+	filtered := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			filtered = append(filtered, p)
+		}
+	}
+	if len(filtered) == 0 {
+		return parent
+	}
+
+	if len(filtered) > maxSegments {
+		filtered = filtered[len(filtered)-maxSegments:]
+	}
+
+	return ".../" + strings.Join(filtered, "/")
 }
 
 // truncateString shortens a string with ellipsis
@@ -481,6 +524,9 @@ func (m *Model) resizeTable() {
 		h = 1
 	}
 	m.table.SetHeight(h)
+	// Keep pagination aligned with visible table rows so the table fills
+	// the available vertical space.
+	m.pageSize = h
 	m.applyTableLayout()
 }
 

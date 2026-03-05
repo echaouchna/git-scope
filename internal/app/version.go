@@ -1,4 +1,4 @@
 package app
 
 // Version is the single source of truth for the app version.
-var Version = "1.0.0"
+var Version = "1.2.0"
