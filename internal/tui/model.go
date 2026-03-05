@@ -218,7 +218,7 @@ func (m Model) Init() tea.Cmd {
 
 // GetSelectedRepo returns the currently selected repo
 func (m Model) GetSelectedRepo() *model.Repo {
-	if m.state != StateReady || len(m.sortedRepos) == 0 {
+	if len(m.sortedRepos) == 0 {
 		return nil
 	}
 
@@ -528,9 +528,11 @@ func (m Model) targetReposForAction() ([]model.Repo, string) {
 		return targets, "selected"
 	}
 
-	targets := make([]model.Repo, len(m.sortedRepos))
-	copy(targets, m.sortedRepos)
-	return targets, "filtered"
+	repo := m.GetSelectedRepo()
+	if repo == nil {
+		return nil, "highlighted"
+	}
+	return []model.Repo{*repo}, "highlighted"
 }
 
 func (m Model) gitActionNeedsBranch() bool {
