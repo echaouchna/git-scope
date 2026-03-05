@@ -490,15 +490,65 @@ func (m Model) handleReadyDirectSortKey(key string) (tea.Model, tea.Cmd, bool) {
 }
 
 func (m Model) handleReadyMetaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	switch msg.String() {
-	case "S":
-		if !m.showStarNudge {
+	key := msg.String()
+	if modelOut, cmd, handled := m.handleReadyMetaNudgeKey(key); handled {
+		return modelOut, cmd, true
+	}
+	if modelOut, cmd, handled := m.handleReadyMetaPanelKey(key); handled {
+		return modelOut, cmd, true
+	}
+	if modelOut, cmd, handled := m.handleReadyMetaGeneralKey(key); handled {
+		return modelOut, cmd, true
+	}
+	return m, nil, false
+}
+
+func (m Model) handleReadyMetaNudgeKey(key string) (tea.Model, tea.Cmd, bool) {
+	if key != "S" {
+		return m, nil, false
+	}
+	if !m.showStarNudge {
+		return m, nil, true
+	}
+	m.showStarNudge = false
+	nudge.MarkCompleted()
+	m.statusMsg = "⭐ Opening GitHub..."
+	return m, openBrowserCmd(nudge.GitHubRepoURL), true
+}
+
+func (m Model) handleReadyMetaPanelKey(key string) (tea.Model, tea.Cmd, bool) {
+	switch key {
+	case "d":
+		if m.activePanel == PanelDisk {
+			m.activePanel = PanelNone
+			m.statusMsg = ""
 			return m, nil, true
 		}
-		m.showStarNudge = false
-		nudge.MarkCompleted()
-		m.statusMsg = "⭐ Opening GitHub..."
-		return m, openBrowserCmd(nudge.GitHubRepoURL), true
+		m.activePanel = PanelDisk
+		m.statusMsg = "💾 Calculating disk usage..."
+		return m, loadDiskDataCmd(m.repos), true
+	case "t":
+		if m.activePanel == PanelTimeline {
+			m.activePanel = PanelNone
+			m.statusMsg = ""
+			return m, nil, true
+		}
+		m.activePanel = PanelTimeline
+		m.statusMsg = "⏰ Loading timeline..."
+		return m, loadTimelineDataCmd(m.repos), true
+	case "esc":
+		if m.activePanel != PanelNone {
+			m.activePanel = PanelNone
+			m.statusMsg = ""
+		}
+		return m, nil, true
+	default:
+		return m, nil, false
+	}
+}
+
+func (m Model) handleReadyMetaGeneralKey(key string) (tea.Model, tea.Cmd, bool) {
+	switch key {
 	case "/":
 		m.state = StateSearching
 		m.resizeTable()
@@ -519,31 +569,6 @@ func (m Model) handleReadyMetaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 	case "e":
 		return m.handleReadyEditorCheck()
-	case "d":
-		if m.activePanel == PanelDisk {
-			m.activePanel = PanelNone
-			m.statusMsg = ""
-			return m, nil, true
-		}
-		m.activePanel = PanelDisk
-		m.statusMsg = "💾 Calculating disk usage..."
-		return m, loadDiskDataCmd(m.repos), true
-	case "t":
-		if m.activePanel == PanelTimeline {
-			m.activePanel = PanelNone
-			m.statusMsg = ""
-			return m, nil, true
-		}
-		m.activePanel = PanelTimeline
-		m.statusMsg = "⏰ Loading timeline..."
-		return m, loadTimelineDataCmd(m.repos), true
-	case "esc":
-		if m.activePanel == PanelNone {
-			return m, nil, true
-		}
-		m.activePanel = PanelNone
-		m.statusMsg = ""
-		return m, nil, true
 	case "w":
 		m.state = StateWorkspaceSwitch
 		m.workspaceInput.SetValue(m.currentWorkspacePath())
@@ -718,14 +743,12 @@ func (m Model) handleWorkspaceSwitchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	finished := !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
 
-	if m.gitActionRunning {
-		if msg.String() == "ctrl+c" || msg.String() == "q" {
-			return m, tea.Quit
-		}
-		return m, nil
+	key := msg.String()
+	if modelOut, cmd, handled := m.handleGitActionRunningState(key); handled {
+		return modelOut, cmd
 	}
 
-	switch msg.String() {
+	switch key {
 	case "esc":
 		m.exitGitActionMode()
 		return m, nil
@@ -736,7 +759,7 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		return m.moveGitActionCursor(1)
 	case "1", "2", "3", "4":
-		return m.selectGitActionByNumber(msg.String())
+		return m.selectGitActionByNumber(key)
 	case "tab":
 		if m.gitActionNeedsBranch() {
 			m.applyNextBranchAutocomplete()
@@ -754,6 +777,20 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startGitActionRun(finished)
 	}
 
+	return m.handleGitActionBranchInput(msg)
+}
+
+func (m Model) handleGitActionRunningState(key string) (tea.Model, tea.Cmd, bool) {
+	if !m.gitActionRunning {
+		return m, nil, false
+	}
+	if key == "ctrl+c" || key == "q" {
+		return m, tea.Quit, true
+	}
+	return m, nil, true
+}
+
+func (m Model) handleGitActionBranchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.gitActionNeedsBranch() {
 		var cmd tea.Cmd
 		m.gitActionInput, cmd = m.gitActionInput.Update(msg)

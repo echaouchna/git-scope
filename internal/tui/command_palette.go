@@ -75,25 +75,7 @@ func (m Model) filteredCommandItems() []commandItem {
 func (m Model) handleShortcutsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.shortcutsEntries()
 	maxIdx := len(items) - 1
-
-	ensureVisible := func(m *Model, visible int) {
-		if m.shortcutsCursor < m.shortcutsOffset {
-			m.shortcutsOffset = m.shortcutsCursor
-		}
-		if m.shortcutsCursor >= m.shortcutsOffset+visible {
-			m.shortcutsOffset = m.shortcutsCursor - visible + 1
-		}
-		if m.shortcutsOffset < 0 {
-			m.shortcutsOffset = 0
-		}
-	}
-
-	visibleRows := 10
-	if m.height > 0 {
-		if v := m.height - 16; v > 4 {
-			visibleRows = v
-		}
-	}
+	visibleRows := m.shortcutsVisibleRows()
 
 	switch msg.String() {
 	case "esc", "?":
@@ -104,13 +86,13 @@ func (m Model) handleShortcutsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.shortcutsCursor > 0 {
 			m.shortcutsCursor--
-			ensureVisible(&m, visibleRows)
+			m.ensureShortcutsCursorVisible(visibleRows)
 		}
 		return m, nil
 	case "down", "j":
 		if m.shortcutsCursor < maxIdx {
 			m.shortcutsCursor++
-			ensureVisible(&m, visibleRows)
+			m.ensureShortcutsCursorVisible(visibleRows)
 		}
 		return m, nil
 	case "pgup":
@@ -118,17 +100,39 @@ func (m Model) handleShortcutsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.shortcutsCursor < 0 {
 			m.shortcutsCursor = 0
 		}
-		ensureVisible(&m, visibleRows)
+		m.ensureShortcutsCursorVisible(visibleRows)
 		return m, nil
 	case "pgdown":
 		m.shortcutsCursor += visibleRows
 		if m.shortcutsCursor > maxIdx {
 			m.shortcutsCursor = maxIdx
 		}
-		ensureVisible(&m, visibleRows)
+		m.ensureShortcutsCursorVisible(visibleRows)
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m Model) shortcutsVisibleRows() int {
+	visibleRows := 10
+	if m.height > 0 {
+		if v := m.height - 16; v > 4 {
+			visibleRows = v
+		}
+	}
+	return visibleRows
+}
+
+func (m *Model) ensureShortcutsCursorVisible(visible int) {
+	if m.shortcutsCursor < m.shortcutsOffset {
+		m.shortcutsOffset = m.shortcutsCursor
+	}
+	if m.shortcutsCursor >= m.shortcutsOffset+visible {
+		m.shortcutsOffset = m.shortcutsCursor - visible + 1
+	}
+	if m.shortcutsOffset < 0 {
+		m.shortcutsOffset = 0
+	}
 }
 
 func (m Model) shortcutsEntries() []string {
@@ -228,25 +232,6 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.filteredCommandItems()
 	visibleRows := m.commandPaletteVisibleRows()
 
-	ensureVisible := func(m *Model) {
-		if m.commandCursor < m.commandOffset {
-			m.commandOffset = m.commandCursor
-		}
-		if m.commandCursor >= m.commandOffset+visibleRows {
-			m.commandOffset = m.commandCursor - visibleRows + 1
-		}
-		if m.commandOffset < 0 {
-			m.commandOffset = 0
-		}
-		maxOffset := 0
-		if len(items) > visibleRows {
-			maxOffset = len(items) - visibleRows
-		}
-		if m.commandOffset > maxOffset {
-			m.commandOffset = maxOffset
-		}
-	}
-
 	switch msg.String() {
 	case "esc":
 		m.exitCommandPaletteMode()
@@ -256,13 +241,13 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.commandCursor > 0 {
 			m.commandCursor--
-			ensureVisible(&m)
+			m.ensureCommandCursorVisible(len(items), visibleRows)
 		}
 		return m, nil
 	case "down", "j":
 		if len(items) > 0 && m.commandCursor < len(items)-1 {
 			m.commandCursor++
-			ensureVisible(&m)
+			m.ensureCommandCursorVisible(len(items), visibleRows)
 		}
 		return m, nil
 	case "pgup":
@@ -270,7 +255,7 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.commandCursor < 0 {
 			m.commandCursor = 0
 		}
-		ensureVisible(&m)
+		m.ensureCommandCursorVisible(len(items), visibleRows)
 		return m, nil
 	case "pgdown":
 		m.commandCursor += visibleRows
@@ -280,7 +265,7 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.commandCursor = 0
 			}
 		}
-		ensureVisible(&m)
+		m.ensureCommandCursorVisible(len(items), visibleRows)
 		return m, nil
 	case "enter":
 		if len(items) == 0 {
@@ -300,8 +285,27 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.commandCursor >= len(items) {
 		m.commandCursor = 0
 	}
-	ensureVisible(&m)
+	m.ensureCommandCursorVisible(len(items), visibleRows)
 	return m, cmd
+}
+
+func (m *Model) ensureCommandCursorVisible(itemsLen, visibleRows int) {
+	if m.commandCursor < m.commandOffset {
+		m.commandOffset = m.commandCursor
+	}
+	if m.commandCursor >= m.commandOffset+visibleRows {
+		m.commandOffset = m.commandCursor - visibleRows + 1
+	}
+	if m.commandOffset < 0 {
+		m.commandOffset = 0
+	}
+	maxOffset := 0
+	if itemsLen > visibleRows {
+		maxOffset = itemsLen - visibleRows
+	}
+	if m.commandOffset > maxOffset {
+		m.commandOffset = maxOffset
+	}
 }
 
 func (m Model) commandPaletteVisibleRows() int {

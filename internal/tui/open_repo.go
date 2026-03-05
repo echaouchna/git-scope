@@ -136,7 +136,8 @@ func (m *Model) exitOpenRepoMode() {
 }
 
 func (m Model) handleOpenRepoMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+	switch key {
 	case "esc":
 		m.exitOpenRepoMode()
 		return m, nil
@@ -150,62 +151,11 @@ func (m Model) handleOpenRepoMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.openRepoChoice = maxInt(0, lastIndex)
 	}
 
-	switch msg.String() {
-	case "up", "k":
-		if m.openRepoChoice > 0 {
-			m.openRepoChoice--
-		}
-		m.ensureOpenRepoChoiceVisible(len(opts))
+	if m.handleOpenRepoNavKey(key, len(opts), lastIndex) {
 		return m, nil
-	case "down", "j":
-		if m.openRepoChoice < lastIndex {
-			m.openRepoChoice++
-		}
-		m.ensureOpenRepoChoiceVisible(len(opts))
-		return m, nil
-	case "pgup":
-		m.openRepoChoice -= m.openRepoVisibleRows()
-		if m.openRepoChoice < 0 {
-			m.openRepoChoice = 0
-		}
-		m.ensureOpenRepoChoiceVisible(len(opts))
-		return m, nil
-	case "pgdown":
-		m.openRepoChoice += m.openRepoVisibleRows()
-		if m.openRepoChoice > lastIndex {
-			m.openRepoChoice = lastIndex
-			if m.openRepoChoice < 0 {
-				m.openRepoChoice = 0
-			}
-		}
-		m.ensureOpenRepoChoiceVisible(len(opts))
-		return m, nil
-	case "enter":
-		if len(opts) == 0 {
-			command := strings.TrimSpace(m.openRepoInput.Value())
-			if command == "" {
-				m.statusMsg = "No matching options and command is empty"
-				return m, nil
-			}
-			repoName := m.openRepoName
-			repoPath := m.openRepoPath
-			m.exitOpenRepoMode()
-			m.statusMsg = "Running command in " + repoName + "..."
-			return m, func() tea.Msg {
-				return openEditorMsg{
-					path:   repoPath,
-					cwd:    repoPath,
-					binary: "sh",
-					args:   []string{"-lc", command},
-					label:  "Command",
-				}
-			}
-		}
-		if m.openRepoChoice < 0 || m.openRepoChoice > lastIndex {
-			m.openRepoChoice = 0
-		}
-		selected := opts[m.openRepoChoice]
-		return m.runOpenRepoAction(selected.action)
+	}
+	if key == "enter" {
+		return m.handleOpenRepoEnter(opts, lastIndex)
 	}
 
 	var cmd tea.Cmd
@@ -221,6 +171,61 @@ func (m Model) handleOpenRepoMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.ensureOpenRepoChoiceVisible(len(opts))
 	return m, cmd
+}
+
+func (m *Model) handleOpenRepoNavKey(key string, optsLen, lastIndex int) bool {
+	switch key {
+	case "up", "k":
+		if m.openRepoChoice > 0 {
+			m.openRepoChoice--
+		}
+	case "down", "j":
+		if m.openRepoChoice < lastIndex {
+			m.openRepoChoice++
+		}
+	case "pgup":
+		m.openRepoChoice -= m.openRepoVisibleRows()
+		if m.openRepoChoice < 0 {
+			m.openRepoChoice = 0
+		}
+	case "pgdown":
+		m.openRepoChoice += m.openRepoVisibleRows()
+		if m.openRepoChoice > lastIndex {
+			m.openRepoChoice = maxInt(0, lastIndex)
+		}
+	default:
+		return false
+	}
+	m.ensureOpenRepoChoiceVisible(optsLen)
+	return true
+}
+
+func (m Model) handleOpenRepoEnter(opts []openRepoOption, lastIndex int) (tea.Model, tea.Cmd) {
+	if len(opts) == 0 {
+		command := strings.TrimSpace(m.openRepoInput.Value())
+		if command == "" {
+			m.statusMsg = "No matching options and command is empty"
+			return m, nil
+		}
+		repoName := m.openRepoName
+		repoPath := m.openRepoPath
+		m.exitOpenRepoMode()
+		m.statusMsg = "Running command in " + repoName + "..."
+		return m, func() tea.Msg {
+			return openEditorMsg{
+				path:   repoPath,
+				cwd:    repoPath,
+				binary: "sh",
+				args:   []string{"-lc", command},
+				label:  "Command",
+			}
+		}
+	}
+	if m.openRepoChoice < 0 || m.openRepoChoice > lastIndex {
+		m.openRepoChoice = 0
+	}
+	selected := opts[m.openRepoChoice]
+	return m.runOpenRepoAction(selected.action)
 }
 
 func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {

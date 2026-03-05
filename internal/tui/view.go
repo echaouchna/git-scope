@@ -391,6 +391,31 @@ func (m Model) renderGitActionModal() string {
 		Padding(1, 2).
 		Width(78)
 
+	content := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("⚙ Git Actions"),
+		"",
+		"Targets: " + m.gitActionTargetLine(),
+		"",
+		"Action:",
+		strings.Join(m.gitActionActionLines(), "\n"),
+	}
+	content = m.appendGitActionBranchSection(content)
+
+	finished := m.gitActionFinished()
+	content = m.appendGitActionProgressSection(content, finished)
+
+	if m.gitActionError != "" {
+		content = append(content, "", lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render("❌ "+m.gitActionError))
+	}
+	content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render(m.gitActionFooterHint(finished)))
+	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
+
+	b.WriteString("\n\n")
+	b.WriteString(m.renderHelp())
+	return b.String()
+}
+
+func (m Model) gitActionTargetLine() string {
 	targets, source := m.targetReposForAction()
 	targetLine := fmt.Sprintf("%d repo(s)", len(targets))
 	switch source {
@@ -401,9 +426,12 @@ func (m Model) renderGitActionModal() string {
 	default:
 		targetLine += " from filtered list"
 	}
+	return targetLine
+}
 
+func (m Model) gitActionActionLines() []string {
 	actions := m.gitActionMenuLabels()
-	actionLines := make([]string, 0, len(actions))
+	lines := make([]string, 0, len(actions))
 	for i, label := range actions {
 		line := fmt.Sprintf("[%d] %s", i+1, label)
 		prefix := "  "
@@ -411,75 +439,74 @@ func (m Model) renderGitActionModal() string {
 			prefix = "➤ "
 			line = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(line)
 		}
-		actionLines = append(actionLines, prefix+line)
+		lines = append(lines, prefix+line)
 	}
+	return lines
+}
 
-	content := []string{
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("⚙ Git Actions"),
-		"",
-		"Targets: " + targetLine,
-		"",
-		"Action:",
-		strings.Join(actionLines, "\n"),
+func (m Model) appendGitActionBranchSection(content []string) []string {
+	if !m.gitActionNeedsBranch() {
+		return content
 	}
+	content = append(content, "", "Branch: "+m.gitActionInput.View())
+	switch {
+	case m.gitActionLoadingBranch:
+		content = append(content, hintStyle.Render("Loading common branches..."))
+	case len(m.gitActionBranchMatches) > 0:
+		suggestions := m.gitActionBranchMatches
+		if len(suggestions) > 5 {
+			suggestions = suggestions[:5]
+		}
+		content = append(content, hintStyle.Render("Suggestions: "+strings.Join(suggestions, ", ")))
+	case len(m.gitActionBranchOptions) > 0:
+		content = append(content, hintStyle.Render("No match for current input"))
+	}
+	return content
+}
 
-	if m.gitActionNeedsBranch() {
-		content = append(content, "", "Branch: "+m.gitActionInput.View())
-		switch {
-		case m.gitActionLoadingBranch:
-			content = append(content, hintStyle.Render("Loading common branches..."))
-		case len(m.gitActionBranchMatches) > 0:
-			suggestions := m.gitActionBranchMatches
-			if len(suggestions) > 5 {
-				suggestions = suggestions[:5]
-			}
-			content = append(content, hintStyle.Render("Suggestions: "+strings.Join(suggestions, ", ")))
-		case len(m.gitActionBranchOptions) > 0:
-			content = append(content, hintStyle.Render("No match for current input"))
-		}
-	}
+func (m Model) gitActionFinished() bool {
+	return !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
+}
 
-	finished := !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
-	if m.gitActionRunning || finished {
-		current := m.gitActionProgressIdx
-		if current > m.gitActionProgressTotal {
-			current = m.gitActionProgressTotal
-		}
-		label := "Running"
-		if !m.gitActionRunning {
-			label = "Last run"
-		}
-		summaryStyle := lipgloss.NewStyle().Foreground(mutedColor)
-		if finished {
-			if m.gitActionFailed > 0 {
-				summaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true)
-			} else {
-				summaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true)
-			}
-		}
-		statusLine := fmt.Sprintf("Progress: %d/%d   Success: %d   Failed: %d", current, m.gitActionProgressTotal, m.gitActionSuccess, m.gitActionFailed)
-		content = append(content, "",
-			fmt.Sprintf("%s: %s", label, m.gitActionCurrentRepo),
-			summaryStyle.Render(statusLine),
-		)
-		if m.gitActionRunning {
-			content = append(content, fmt.Sprintf("%s Running action...", m.spinner.View()))
-		}
+func (m Model) appendGitActionProgressSection(content []string, finished bool) []string {
+	if !m.gitActionRunning && !finished {
+		return content
 	}
+	current := m.gitActionProgressIdx
+	if current > m.gitActionProgressTotal {
+		current = m.gitActionProgressTotal
+	}
+	label := "Running"
+	if !m.gitActionRunning {
+		label = "Last run"
+	}
+	summaryStyle := m.gitActionSummaryStyle(finished)
+	statusLine := fmt.Sprintf("Progress: %d/%d   Success: %d   Failed: %d", current, m.gitActionProgressTotal, m.gitActionSuccess, m.gitActionFailed)
+	content = append(content, "",
+		fmt.Sprintf("%s: %s", label, m.gitActionCurrentRepo),
+		summaryStyle.Render(statusLine),
+	)
+	if m.gitActionRunning {
+		content = append(content, fmt.Sprintf("%s Running action...", m.spinner.View()))
+	}
+	return content
+}
 
-	if m.gitActionError != "" {
-		content = append(content, "", lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render("❌ "+m.gitActionError))
+func (m Model) gitActionSummaryStyle(finished bool) lipgloss.Style {
+	if !finished {
+		return lipgloss.NewStyle().Foreground(mutedColor)
 	}
+	if m.gitActionFailed > 0 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true)
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true)
+}
+
+func (m Model) gitActionFooterHint(finished bool) string {
 	if finished {
-		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("Completed. Enter run again, 1-4/↑↓ choose action, Esc return, l view logs"))
-	} else {
-		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ action, type branch, Tab autocomplete, Enter run, Esc cancel"))
+		return "Completed. Enter run again, 1-4/↑↓ choose action, Esc return, l view logs"
 	}
-	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
-
-	b.WriteString("\n\n")
-	b.WriteString(m.renderHelp())
-	return b.String()
+	return "↑/↓ action, type branch, Tab autocomplete, Enter run, Esc cancel"
 }
 
 func (m Model) renderOpenRepoModal() string {

@@ -33,14 +33,18 @@ fmt-check:
 
 # Lint with golangci-lint via mise (project standard).
 lint:
-  mise exec -- golangci-lint run --enable gocritic --enable gocyclo ./...
+  GOCACHE=/tmp/go-build GOLANGCI_LINT_CACHE=/tmp/golangci-cache mise exec -- golangci-lint run --enable gocritic --enable gocyclo ./...
+
+# Reproduce Go Report Card-style cyclomatic checks (threshold: >15).
+cyclo:
+  GOCACHE=/tmp/go-build GOLANGCI_LINT_CACHE=/tmp/golangci-cache mise exec -- golangci-lint run -c .golangci-gocyclo.yml ./...
 
 # Run pre-commit hooks across all files.
 pre-commit:
   pre-commit run --all-files
 
 # CI-equivalent checks.
-check: fmt-check build test lint
+check: fmt-check build test lint cyclo
 
 # Validate GoReleaser config without publishing.
 release-check:
