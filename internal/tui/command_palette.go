@@ -21,6 +21,7 @@ func (m *Model) enterShortcutsMode() {
 func (m *Model) enterCommandPaletteMode() tea.Cmd {
 	m.state = StateCommandPalette
 	m.commandCursor = 0
+	m.commandOffset = 0
 	m.commandInput.SetValue("")
 	m.commandInput.Focus()
 	return nil
@@ -37,6 +38,7 @@ func (m *Model) exitCommandPaletteMode() {
 	m.commandInput.Blur()
 	m.commandInput.SetValue("")
 	m.commandCursor = 0
+	m.commandOffset = 0
 }
 
 func (m Model) commandPaletteItems() []commandItem {
@@ -224,6 +226,26 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 
 func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.filteredCommandItems()
+	visibleRows := m.commandPaletteVisibleRows()
+
+	ensureVisible := func(m *Model) {
+		if m.commandCursor < m.commandOffset {
+			m.commandOffset = m.commandCursor
+		}
+		if m.commandCursor >= m.commandOffset+visibleRows {
+			m.commandOffset = m.commandCursor - visibleRows + 1
+		}
+		if m.commandOffset < 0 {
+			m.commandOffset = 0
+		}
+		maxOffset := 0
+		if len(items) > visibleRows {
+			maxOffset = len(items) - visibleRows
+		}
+		if m.commandOffset > maxOffset {
+			m.commandOffset = maxOffset
+		}
+	}
 
 	switch msg.String() {
 	case "esc":
@@ -234,12 +256,31 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.commandCursor > 0 {
 			m.commandCursor--
+			ensureVisible(&m)
 		}
 		return m, nil
 	case "down", "j":
 		if len(items) > 0 && m.commandCursor < len(items)-1 {
 			m.commandCursor++
+			ensureVisible(&m)
 		}
+		return m, nil
+	case "pgup":
+		m.commandCursor -= visibleRows
+		if m.commandCursor < 0 {
+			m.commandCursor = 0
+		}
+		ensureVisible(&m)
+		return m, nil
+	case "pgdown":
+		m.commandCursor += visibleRows
+		if len(items) == 0 || m.commandCursor > len(items)-1 {
+			m.commandCursor = len(items) - 1
+			if m.commandCursor < 0 {
+				m.commandCursor = 0
+			}
+		}
+		ensureVisible(&m)
 		return m, nil
 	case "enter":
 		if len(items) == 0 {
@@ -255,10 +296,22 @@ func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.commandInput, cmd = m.commandInput.Update(msg)
-	if m.commandCursor >= len(m.filteredCommandItems()) {
+	items = m.filteredCommandItems()
+	if m.commandCursor >= len(items) {
 		m.commandCursor = 0
 	}
+	ensureVisible(&m)
 	return m, cmd
+}
+
+func (m Model) commandPaletteVisibleRows() int {
+	visibleRows := 8
+	if m.height > 0 {
+		if v := m.height - 16; v > 4 {
+			visibleRows = v
+		}
+	}
+	return visibleRows
 }
 
 func itoa(v int) string {

@@ -89,6 +89,7 @@ type Model struct {
 	// Command palette state
 	commandInput  textinput.Model
 	commandCursor int
+	commandOffset int
 	// Shortcuts overlay state
 	shortcutsCursor int
 	shortcutsOffset int

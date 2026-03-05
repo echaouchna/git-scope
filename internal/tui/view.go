@@ -568,13 +568,36 @@ func (m Model) renderCommandPaletteModal() string {
 	b.WriteString(compactLogo())
 	b.WriteString("\n\n")
 
+	modalWidth := 76
+	if m.width > 0 {
+		if w := m.width - 6; w > 44 {
+			modalWidth = w
+		}
+	}
+
 	modalStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#7C3AED")).
 		Padding(1, 2).
-		Width(76)
+		Width(modalWidth)
 
 	items := m.filteredCommandItems()
+	visibleRows := m.commandPaletteVisibleRows()
+	start := m.commandOffset
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleRows
+	if end > len(items) {
+		end = len(items)
+	}
+	if start > end {
+		start = 0
+		end = len(items)
+		if end > visibleRows {
+			end = visibleRows
+		}
+	}
 	lines := []string{
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Command Palette"),
 		"",
@@ -585,11 +608,7 @@ func (m Model) renderCommandPaletteModal() string {
 	if len(items) == 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("No matching commands"))
 	} else {
-		max := len(items)
-		if max > 8 {
-			max = 8
-		}
-		for i := 0; i < max; i++ {
+		for i := start; i < end; i++ {
 			line := items[i].label
 			prefix := "  "
 			if i == m.commandCursor {
@@ -598,6 +617,7 @@ func (m Model) renderCommandPaletteModal() string {
 			}
 			lines = append(lines, prefix+line)
 		}
+		lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf("Item %d/%d • ↑/↓ scroll • PgUp/PgDn page", m.commandCursor+1, len(items))))
 	}
 
 	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("Type to search, Enter run, Esc cancel"))
