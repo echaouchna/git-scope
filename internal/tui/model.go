@@ -115,6 +115,7 @@ type Model struct {
 	gitActionLogOffset     int
 	lastActionLogLines     []string
 	lastActionSummary      string
+	actionLogsReturnState  State
 	// Open repo modal state
 	openRepoName      string
 	openRepoPath      string

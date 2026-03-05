@@ -27,6 +27,7 @@ func (m *Model) enterCommandPaletteMode() tea.Cmd {
 }
 
 func (m *Model) enterActionLogsMode() {
+	m.actionLogsReturnState = m.state
 	m.state = StateActionLogs
 	m.gitActionLogOffset = 0
 }
@@ -293,7 +294,12 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc", "l":
-		m.state = StateReady
+		if m.actionLogsReturnState == StateGitAction {
+			m.state = StateGitAction
+		} else {
+			m.state = StateReady
+		}
+		m.actionLogsReturnState = StateReady
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit

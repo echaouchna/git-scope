@@ -639,38 +639,6 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if finished {
-		switch msg.String() {
-		case "esc":
-			m.exitGitActionMode()
-			return m, scanReposCmd(m.cfg, true)
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "up", "k":
-			if m.gitActionLogOffset > 0 {
-				m.gitActionLogOffset--
-			}
-			return m, nil
-		case "down", "j":
-			maxOffset := 0
-			visible := 10
-			if m.height > 0 {
-				if v := m.height - 28; v > 4 {
-					visible = v
-				}
-			}
-			if len(m.gitActionLogLines) > visible {
-				maxOffset = len(m.gitActionLogLines) - visible
-			}
-			if m.gitActionLogOffset < maxOffset {
-				m.gitActionLogOffset++
-			}
-			return m, nil
-		}
-		// Any other key starts a new action cycle without leaving the modal.
-		m.resetGitActionRunState()
-	}
-
 	triggerBranchLoad := func(m Model) (tea.Model, tea.Cmd) {
 		if m.gitActionType == GitActionSwitch || m.gitActionType == GitActionMergeNoFF {
 			repos, _ := m.targetReposForAction()
@@ -691,6 +659,9 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "up", "k":
+		if finished {
+			m.resetGitActionRunState()
+		}
 		if m.gitActionCursor > 0 {
 			m.gitActionCursor--
 			m.setGitActionFromCursor()
@@ -704,6 +675,9 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "down", "j":
+		if finished {
+			m.resetGitActionRunState()
+		}
 		if m.gitActionCursor < len(m.gitActionMenuLabels())-1 {
 			m.gitActionCursor++
 			m.setGitActionFromCursor()
@@ -717,6 +691,9 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "1", "2", "3", "4":
+		if finished {
+			m.resetGitActionRunState()
+		}
 		switch msg.String() {
 		case "1":
 			m.gitActionCursor = 0
@@ -742,7 +719,17 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+	case "l":
+		if len(m.lastActionLogLines) == 0 {
+			m.gitActionError = "no action logs yet"
+			return m, nil
+		}
+		m.enterActionLogsMode()
+		return m, nil
 	case "enter":
+		if finished {
+			m.resetGitActionRunState()
+		}
 		if m.gitActionType == GitActionNone {
 			m.gitActionError = "choose an action first"
 			return m, nil

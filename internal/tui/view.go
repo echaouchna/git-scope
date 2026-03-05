@@ -320,6 +320,7 @@ func (m Model) renderHelp() string {
 			keyBinding("↑↓", "action"),
 			keyBinding("tab", "autocomplete"),
 			keyBinding("enter", "run"),
+			keyBinding("l", "logs"),
 			keyBinding("esc", "cancel"),
 		}
 	} else if m.state == StateShortcuts {
@@ -395,6 +396,8 @@ func (m Model) renderGitActionModal() string {
 	targetLine := fmt.Sprintf("%d repo(s)", len(targets))
 	if source == "selected" {
 		targetLine += " from selected set"
+	} else if source == "highlighted" {
+		targetLine += " from highlighted row"
 	} else {
 		targetLine += " from filtered list"
 	}
@@ -447,38 +450,11 @@ func (m Model) renderGitActionModal() string {
 	}
 
 	finished := !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
-	if m.gitActionRunning || finished {
-		visible := 10
-		if m.height > 0 {
-			if v := m.height - 28; v > 4 {
-				visible = v
-			}
-		}
-		start := m.gitActionLogOffset
-		if start < 0 {
-			start = 0
-		}
-		end := start + visible
-		if end > len(m.gitActionLogLines) {
-			end = len(m.gitActionLogLines)
-		}
-		if start > end {
-			start = 0
-		}
-		logLines := []string{"Logs:"}
-		if len(m.gitActionLogLines) == 0 {
-			logLines = append(logLines, "  (no output yet)")
-		} else {
-			logLines = append(logLines, m.gitActionLogLines[start:end]...)
-			logLines = append(logLines, hintStyle.Render(fmt.Sprintf("Log lines %d-%d/%d", start+1, end, len(m.gitActionLogLines))))
-		}
-		content = append(content, "", strings.Join(logLines, "\n"))
-	}
 	if m.gitActionError != "" {
 		content = append(content, "", lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render("❌ "+m.gitActionError))
 	}
 	if finished {
-		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll logs, Enter run again, 1-4/↑↓ choose action, Esc return"))
+		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("Completed. Enter run again, 1-4/↑↓ choose action, Esc return, l view logs"))
 	} else {
 		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ action, type branch, Tab autocomplete, Enter run, Esc cancel"))
 	}
