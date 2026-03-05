@@ -51,6 +51,8 @@ func (m *Model) enterGitActionMode() tea.Cmd {
 	m.gitActionSuccess = 0
 	m.gitActionFailed = 0
 	m.gitActionFirstError = ""
+	m.gitActionLogLines = nil
+	m.gitActionLogOffset = 0
 	return nil
 }
 
@@ -75,6 +77,24 @@ func (m *Model) exitGitActionMode() {
 	m.gitActionSuccess = 0
 	m.gitActionFailed = 0
 	m.gitActionFirstError = ""
+	m.gitActionLogLines = nil
+	m.gitActionLogOffset = 0
+}
+
+func (m *Model) resetGitActionRunState() {
+	m.gitActionRunning = false
+	m.gitActionQueue = nil
+	m.gitActionExecArgs = nil
+	m.gitActionScopeName = ""
+	m.gitActionProgressIdx = 0
+	m.gitActionProgressTotal = 0
+	m.gitActionCurrentRepo = ""
+	m.gitActionSuccess = 0
+	m.gitActionFailed = 0
+	m.gitActionFirstError = ""
+	m.gitActionLogLines = nil
+	m.gitActionLogOffset = 0
+	m.gitActionError = ""
 }
 
 func (m *Model) setGitActionFromCursor() {

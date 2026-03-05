@@ -34,6 +34,8 @@ func (m Model) renderContent() string {
 		b.WriteString(m.renderShortcutsModal())
 	case StateCommandPalette:
 		b.WriteString(m.renderCommandPaletteModal())
+	case StateActionLogs:
+		b.WriteString(m.renderActionLogsModal())
 	}
 
 	return b.String()
@@ -332,6 +334,13 @@ func (m Model) renderHelp() string {
 			keyBinding("enter", "run"),
 			keyBinding("esc", "cancel"),
 		}
+	} else if m.state == StateActionLogs {
+		items = []string{
+			keyBinding("↑↓", "scroll"),
+			keyBinding("pgup/dn", "page"),
+			keyBinding("l", "close"),
+			keyBinding("esc", "close"),
+		}
 	} else if m.state == StateOpenRepo {
 		pickRange := "1-2"
 		if len(m.openRepoOptions()) >= 3 {
@@ -359,6 +368,7 @@ func (m Model) renderHelp() string {
 			keyBinding("space", "select"),
 			keyBinding("enter", "open"),
 			keyBinding("a", "actions"),
+			keyBinding("l", "logs"),
 			keyBinding("/", "search"),
 			keyBinding("?", "shortcuts"),
 			keyBinding("ctrl+p", "commands"),
@@ -435,10 +445,43 @@ func (m Model) renderGitActionModal() string {
 			fmt.Sprintf("Progress: %d/%d   Success: %d   Failed: %d", current, m.gitActionProgressTotal, m.gitActionSuccess, m.gitActionFailed),
 		)
 	}
+
+	finished := !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
+	if m.gitActionRunning || finished {
+		visible := 10
+		if m.height > 0 {
+			if v := m.height - 28; v > 4 {
+				visible = v
+			}
+		}
+		start := m.gitActionLogOffset
+		if start < 0 {
+			start = 0
+		}
+		end := start + visible
+		if end > len(m.gitActionLogLines) {
+			end = len(m.gitActionLogLines)
+		}
+		if start > end {
+			start = 0
+		}
+		logLines := []string{"Logs:"}
+		if len(m.gitActionLogLines) == 0 {
+			logLines = append(logLines, "  (no output yet)")
+		} else {
+			logLines = append(logLines, m.gitActionLogLines[start:end]...)
+			logLines = append(logLines, hintStyle.Render(fmt.Sprintf("Log lines %d-%d/%d", start+1, end, len(m.gitActionLogLines))))
+		}
+		content = append(content, "", strings.Join(logLines, "\n"))
+	}
 	if m.gitActionError != "" {
 		content = append(content, "", lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render("❌ "+m.gitActionError))
 	}
-	content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ action, type branch, Tab autocomplete, Enter run, Esc cancel"))
+	if finished {
+		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll logs, Enter run again, 1-4/↑↓ choose action, Esc return"))
+	} else {
+		content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ action, type branch, Tab autocomplete, Enter run, Esc cancel"))
+	}
 	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
 
 	b.WriteString("\n\n")
@@ -582,6 +625,54 @@ func (m Model) renderCommandPaletteModal() string {
 	}
 
 	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("Type to search, Enter run, Esc cancel"))
+	b.WriteString(modalStyle.Render(strings.Join(lines, "\n")))
+	b.WriteString("\n\n")
+	b.WriteString(m.renderHelp())
+	return b.String()
+}
+
+func (m Model) renderActionLogsModal() string {
+	var b strings.Builder
+	b.WriteString(compactLogo())
+	b.WriteString("\n\n")
+
+	modalStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7C3AED")).
+		Padding(1, 2).
+		Width(90)
+
+	visible := 12
+	if m.height > 0 {
+		if v := m.height - 16; v > 4 {
+			visible = v
+		}
+	}
+	start := m.gitActionLogOffset
+	if start < 0 {
+		start = 0
+	}
+	end := start + visible
+	if end > len(m.lastActionLogLines) {
+		end = len(m.lastActionLogLines)
+	}
+	if start > end {
+		start = 0
+	}
+
+	lines := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Last Action Logs"),
+		"",
+		m.lastActionSummary,
+		"",
+	}
+	if len(m.lastActionLogLines) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("(no logs)"))
+	} else {
+		lines = append(lines, m.lastActionLogLines[start:end]...)
+		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Log lines %d-%d/%d", start+1, end, len(m.lastActionLogLines))))
+	}
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll, PgUp/PgDn page, l/Esc close"))
 	b.WriteString(modalStyle.Render(strings.Join(lines, "\n")))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderHelp())

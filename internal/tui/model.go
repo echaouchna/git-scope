@@ -29,6 +29,7 @@ const (
 	StateOpenRepo
 	StateShortcuts
 	StateCommandPalette
+	StateActionLogs
 )
 
 type GitActionType int
@@ -110,6 +111,10 @@ type Model struct {
 	gitActionSuccess       int
 	gitActionFailed        int
 	gitActionFirstError    string
+	gitActionLogLines      []string
+	gitActionLogOffset     int
+	lastActionLogLines     []string
+	lastActionSummary      string
 	// Open repo modal state
 	openRepoName      string
 	openRepoPath      string

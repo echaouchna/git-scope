@@ -26,6 +26,11 @@ func (m *Model) enterCommandPaletteMode() tea.Cmd {
 	return nil
 }
 
+func (m *Model) enterActionLogsMode() {
+	m.state = StateActionLogs
+	m.gitActionLogOffset = 0
+}
+
 func (m *Model) exitCommandPaletteMode() {
 	m.state = StateReady
 	m.commandInput.Blur()
@@ -44,6 +49,7 @@ func (m Model) commandPaletteItems() []commandItem {
 		{label: "Open selected repo menu", key: "open_repo"},
 		{label: "Switch workspace", key: "workspace"},
 		{label: "Show shortcuts", key: "shortcuts"},
+		{label: "Show last action logs", key: "action_logs"},
 		{label: "Quit", key: "quit"},
 	}
 }
@@ -130,6 +136,7 @@ func (m Model) shortcutsEntries() []string {
 		"Selection: Space select/deselect current repo",
 		"Selection: Ctrl+A select/deselect all filtered repos",
 		"Actions: a open Git actions modal",
+		"Actions: l open last action logs",
 		"Search: / open search mode",
 		"Search: c clear search/filters",
 		"Refresh: r rescan repositories",
@@ -202,6 +209,13 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "quit":
 		return m, tea.Quit
+	case "action_logs":
+		if len(m.lastActionLogLines) == 0 {
+			m.statusMsg = "No action logs yet"
+			return m, nil
+		}
+		m.enterActionLogsMode()
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -263,4 +277,48 @@ func itoa(v int) string {
 		buf = append([]byte{'-'}, buf...)
 	}
 	return string(buf)
+}
+
+func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	visible := 10
+	if m.height > 0 {
+		if v := m.height - 16; v > 4 {
+			visible = v
+		}
+	}
+	maxOffset := 0
+	if len(m.lastActionLogLines) > visible {
+		maxOffset = len(m.lastActionLogLines) - visible
+	}
+
+	switch msg.String() {
+	case "esc", "l":
+		m.state = StateReady
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
+	case "up", "k":
+		if m.gitActionLogOffset > 0 {
+			m.gitActionLogOffset--
+		}
+		return m, nil
+	case "down", "j":
+		if m.gitActionLogOffset < maxOffset {
+			m.gitActionLogOffset++
+		}
+		return m, nil
+	case "pgup":
+		m.gitActionLogOffset -= visible
+		if m.gitActionLogOffset < 0 {
+			m.gitActionLogOffset = 0
+		}
+		return m, nil
+	case "pgdown":
+		m.gitActionLogOffset += visible
+		if m.gitActionLogOffset > maxOffset {
+			m.gitActionLogOffset = maxOffset
+		}
+		return m, nil
+	}
+	return m, nil
 }

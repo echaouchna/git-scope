@@ -146,6 +146,7 @@ Typical git workflows involve "tunnel vision"—working deep inside one reposito
 | `[` / `]` | **Page Navigation** (Previous / Next) |
 | `Enter` | **Open Project Menu** (Neovim if installed / VS Code / dismiss) |
 | `a` | Open **Git Actions** modal (supports batch run) |
+| `l` | Open **Last Action Logs** |
 | `Ctrl+P` | Open **Command Palette** (search + run commands) |
 | `?` | Show **All Shortcuts** overlay |
 | `c` | **Clear** search & filters |
