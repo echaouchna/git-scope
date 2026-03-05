@@ -57,6 +57,7 @@ homebrew_casks:
       owner: echaouchna
       name: homebrew-tap
       branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/echaouchna/git-scope
     description: Fast TUI dashboard for managing many Git repositories
     license: MIT
