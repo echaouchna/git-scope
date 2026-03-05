@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [1.2.0] - Unreleased
 
+### Added
+- Pre-commit configuration with recommended repository hygiene hooks.
+- Local pre-commit hook to validate that `internal/app/version.go` matches the latest version entry in `CHANGELOG.md` (including unreleased versions).
+
 ### Changed
 - Open Project modal now uses a single input for both option search and custom command entry.
 - When no open-option matches are found, pressing `Enter` now runs the typed command in the selected repository directory.
