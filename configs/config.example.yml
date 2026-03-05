@@ -1,0 +1,22 @@
+# Git-Scope Configuration
+# Copy this file to ~/.config/git-scope/config.yml
+
+# Root directories to scan for git repositories
+roots:
+  - ~/code
+  - ~/projects
+
+# Directories to ignore during scanning
+ignore:
+  - node_modules
+  - .next
+  - dist
+  - build
+  - target
+  - .venv
+  - vendor
+  - .terraform
+
+# Editor to open repos in (default: code)
+# Options: code, idea, nvim, vim, etc.
+editor: code
