@@ -48,6 +48,7 @@ changelog:
 release:
   draft: false
   prerelease: auto
+  replace_existing_artifacts: true
 
 homebrew_casks:
   - name: git-scope
