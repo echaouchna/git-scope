@@ -131,6 +131,17 @@ type Model struct {
 	selectedRepoPaths map[string]bool
 }
 
+type tableLayout struct {
+	tableWidth      int
+	statusWidth     int
+	repoWidth       int
+	branchWidth     int
+	stagedWidth     int
+	modifiedWidth   int
+	untrackedWidth  int
+	lastCommitWidth int
+}
+
 // NewModel creates a new TUI model
 func NewModel(cfg *config.Config) Model {
 	columns := []table.Column{
@@ -303,6 +314,7 @@ func (m *Model) sortRepos() {
 
 // updateTable refreshes the table with current filtered and sorted repos
 func (m *Model) updateTable() {
+	m.applyTableLayout()
 	m.applyFilter()
 	m.sortRepos()
 	m.table.SetRows(m.reposToRows(m.getCurrentPageRepos()))
@@ -381,6 +393,8 @@ func (m Model) GetFilterModeName() string {
 
 // reposToRows converts repos to table rows with status indicators
 func (m Model) reposToRows(repos []model.Repo) []table.Row {
+	layout := m.currentTableLayout()
+
 	rows := make([]table.Row, 0, len(repos))
 	for _, r := range repos {
 		lastCommit := "N/A"
@@ -402,12 +416,12 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 		rows = append(rows, table.Row{
 			selected,
 			status,
-			truncateString(r.Name, 18),
-			truncateString(r.Status.Branch, 14),
+			truncateString(r.Name, layout.repoWidth),
+			truncateString(r.Status.Branch, layout.branchWidth),
 			formatNumber(r.Status.Staged),
 			formatNumber(r.Status.Unstaged),
 			formatNumber(r.Status.Untracked),
-			lastCommit,
+			truncateString(lastCommit, layout.lastCommitWidth),
 		})
 	}
 	return rows
@@ -449,6 +463,66 @@ func (m *Model) resizeTable() {
 		h = 1
 	}
 	m.table.SetHeight(h)
+	m.applyTableLayout()
+}
+
+func (m *Model) applyTableLayout() {
+	layout := m.currentTableLayout()
+	m.table.SetWidth(layout.tableWidth)
+	m.table.SetColumns([]table.Column{
+		{Title: "Sel", Width: 3},
+		{Title: "Status", Width: layout.statusWidth},
+		{Title: "Repository", Width: layout.repoWidth},
+		{Title: "Branch", Width: layout.branchWidth},
+		{Title: "Staged", Width: layout.stagedWidth},
+		{Title: "Modified", Width: layout.modifiedWidth},
+		{Title: "Untracked", Width: layout.untrackedWidth},
+		{Title: "Last Commit", Width: layout.lastCommitWidth},
+	})
+}
+
+func (m Model) currentTableLayout() tableLayout {
+	tableWidth := m.width - 4
+	if tableWidth < 60 {
+		tableWidth = 60
+	}
+
+	if m.activePanel != PanelNone {
+		leftWidth := int(float64(tableWidth) * 0.58)
+		rightWidth := tableWidth - leftWidth - 3
+		if rightWidth < 20 {
+			rightWidth = 20
+			leftWidth = tableWidth - rightWidth - 3
+		}
+		if leftWidth > 0 {
+			tableWidth = leftWidth
+		}
+	}
+
+	// Compact column layout for split-pane and narrow terminals.
+	if m.activePanel != PanelNone || tableWidth < 96 {
+		return tableLayout{
+			tableWidth:      tableWidth,
+			statusWidth:     7,
+			repoWidth:       12,
+			branchWidth:     9,
+			stagedWidth:     3,
+			modifiedWidth:   3,
+			untrackedWidth:  3,
+			lastCommitWidth: 10,
+		}
+	}
+
+	return tableLayout{
+		tableWidth:      tableWidth,
+		statusWidth:     8,
+		repoWidth:       18,
+		branchWidth:     14,
+		stagedWidth:     6,
+		modifiedWidth:   8,
+		untrackedWidth:  9,
+		lastCommitWidth: 14,
+	}
 }
 
 func (m *Model) syncSelectionsWithRepos() {
