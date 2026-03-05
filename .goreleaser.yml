@@ -50,9 +50,7 @@ release:
   prerelease: auto
 
 homebrew_casks:
-  - ids:
-      - git-scope
-    name: git-scope
+  - name: git-scope
     binaries:
       - git-scope
     repository:
