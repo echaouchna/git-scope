@@ -88,35 +88,31 @@ func (m *Model) enterOpenRepoMode(name, path string) {
 	m.state = StateOpenRepo
 	m.openRepoName = name
 	m.openRepoPath = path
-
-	nvimBin, err := exec.LookPath("nvim")
-	m.openRepoHasNeovim = err == nil
-	if err == nil {
-		m.openRepoNeovimBin = nvimBin
-	} else {
-		m.openRepoNeovimBin = ""
-	}
-
-	gituiBin, err := exec.LookPath("gitui")
-	m.openRepoHasGitUI = err == nil
-	if err == nil {
-		m.openRepoGitUIBin = gituiBin
-	} else {
-		m.openRepoGitUIBin = ""
-	}
-
-	tigBin, err := exec.LookPath("tig")
-	m.openRepoHasTig = err == nil
-	if err == nil {
-		m.openRepoTigBin = tigBin
-	} else {
-		m.openRepoTigBin = ""
-	}
+	m.ensureOpenRepoToolsReady()
 
 	m.openRepoChoice = 0
 	m.openRepoOffset = 0
 	m.openRepoInput.SetValue("")
 	m.openRepoInput.Focus()
+}
+
+func (m *Model) ensureOpenRepoToolsReady() {
+	if m.openRepoToolsReady {
+		return
+	}
+
+	m.openRepoNeovimBin, m.openRepoHasNeovim = lookupBinary("nvim")
+	m.openRepoGitUIBin, m.openRepoHasGitUI = lookupBinary("gitui")
+	m.openRepoTigBin, m.openRepoHasTig = lookupBinary("tig")
+	m.openRepoToolsReady = true
+}
+
+func lookupBinary(name string) (string, bool) {
+	bin, err := exec.LookPath(name)
+	if err != nil {
+		return "", false
+	}
+	return bin, true
 }
 
 func (m *Model) exitOpenRepoMode() {
@@ -127,12 +123,6 @@ func (m *Model) exitOpenRepoMode() {
 	m.openRepoOffset = 0
 	m.openRepoInput.Blur()
 	m.openRepoInput.SetValue("")
-	m.openRepoHasNeovim = false
-	m.openRepoNeovimBin = ""
-	m.openRepoHasGitUI = false
-	m.openRepoGitUIBin = ""
-	m.openRepoHasTig = false
-	m.openRepoTigBin = ""
 }
 
 func (m Model) handleOpenRepoMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

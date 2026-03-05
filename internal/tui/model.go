@@ -124,17 +124,18 @@ type Model struct {
 	watchRefreshRunning bool
 	watchRefreshPending bool
 	// Open repo modal state
-	openRepoName      string
-	openRepoPath      string
-	openRepoChoice    int
-	openRepoOffset    int
-	openRepoInput     textinput.Model
-	openRepoHasNeovim bool
-	openRepoNeovimBin string
-	openRepoHasGitUI  bool
-	openRepoGitUIBin  string
-	openRepoHasTig    bool
-	openRepoTigBin    string
+	openRepoName       string
+	openRepoPath       string
+	openRepoChoice     int
+	openRepoOffset     int
+	openRepoInput      textinput.Model
+	openRepoHasNeovim  bool
+	openRepoNeovimBin  string
+	openRepoHasGitUI   bool
+	openRepoGitUIBin   string
+	openRepoHasTig     bool
+	openRepoTigBin     string
+	openRepoToolsReady bool
 	// Star nudge state
 	showStarNudge         bool
 	nudgeShownThisSession bool
