@@ -1,6 +1,6 @@
 # git-scope
 
-> **A fast TUI dashboard to view the git status of *all your repositories* in one place.** > Stop the `cd` → `git status` loop.
+> **A fast TUI dashboard to view the git status of all your repositories in one place.** Stop the `cd` -> `git status` loop.
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/echaouchna/git-scope)](https://goreportcard.com/report/github.com/echaouchna/git-scope)
 [![GitHub Release](https://img.shields.io/github/v/release/echaouchna/git-scope?color=8B5CF6)](https://github.com/echaouchna/git-scope/releases)
@@ -31,11 +31,11 @@ Get started in seconds.
 ### Homebrew (macOS/Linux)
 ```bash
 brew tap echaouchna/tap && brew install git-scope
-````
+```
 ### Update
 ```bash
 brew upgrade git-scope
-````
+```
 
 ### Universal Installer (macOS/Linux)
 ```bash
@@ -88,7 +88,7 @@ git-scope -h           # Show help
 | :--- | :--- | :--- |
 | **Scope** | **All repos at once** | One repo at a time |
 | **Primary Goal** | Find what needs attention | Stage/Commit/Diff |
-| **Fuzzy Search** | Find repo by name/path | ❌ |
+| **Search** | Find repo by name/branch | ❌ |
 | **Integration** | Press `Enter` to open editor | Press `Enter` to stage files |
 | **Performance** | \~10ms startup (cached) | Slower on large monorepos |
 
@@ -97,14 +97,15 @@ git-scope -h           # Show help
 ## ✨ Features
 
   * **📁 Workspace Switch** — Switch root directories without quitting (`w`). Supports `~`, relative paths, and **symlinks**.
-  * **🔍 Fuzzy Search** — Find any repo by name, path, or branch (`/`).
+  * **🔍 Fast Search** — Find repos by name or branch (`/`).
   * **🛡️ Dirty Filter** — Instantly show only repos with uncommitted changes (`f`).
   * **📄 Pagination** — Navigate large repo lists with page-by-page browsing (`[` / `]`). Shows 15 repos per page with a dynamic page indicator.
   * **🚀 Editor Jump** — Open the selected repo in VSCode, Neovim, Vim, or Helix (`Enter`).
   * **☑ Selection Workflow** — Select/deselect repos inline (`Space`), with select/deselect-all (`Ctrl+A`) for filtered results.
   * **⚙️ In-TUI Git Actions** — Action menu with keyboard navigation and branch autocomplete (`a`).
-  * **📦 Batch Actions** — Run actions on selected repos; if none are selected, runs on filtered repos.
+  * **📦 Batch Actions** — Run actions on selected repos; if none are selected, runs on the highlighted repo.
   * **🌿 Common Branch Suggestions** — For `switch` (and merge suggestions), branch autocomplete only suggests branches common across targets.
+  * **📜 Action Logs On Demand** — Logs are available through the `l` shortcut from the dashboard or Git Actions modal.
   * **⚡ Blazing Fast** — JSON caching ensures \~10ms launch time even with 50+ repos.
   * **📊 Dashboard Stats** — See branch name, staged/unstaged counts, and last commit time.
   * **💾 Disk Usage** — Visualize `.git` vs `node_modules` size (`d`).
@@ -137,7 +138,7 @@ Typical git workflows involve "tunnel vision"—working deep inside one reposito
 | Key | Action |
 | :--- | :--- |
 | `w` | **Switch Workspace** (with Tab completion) |
-| `/` | **Search** repositories (Fuzzy) |
+| `/` | **Search** repositories (name/branch) |
 | `f` | **Filter** (Cycle: All / Dirty / Clean) |
 | `s` | Cycle **Sort** Mode |
 | `1`–`4` | Sort by: Dirty / Name / Branch / Recent |
@@ -146,7 +147,7 @@ Typical git workflows involve "tunnel vision"—working deep inside one reposito
 | `[` / `]` | **Page Navigation** (Previous / Next) |
 | `Enter` | **Open Project Menu** (Neovim if installed / VS Code / dismiss) |
 | `a` | Open **Git Actions** modal (supports batch run) |
-| `l` | Open **Last Action Logs** |
+| `l` | Open **Last Action Logs** (from dashboard or actions modal) |
 | `Ctrl+P` | Open **Command Palette** (search + run commands) |
 | `?` | Show **All Shortcuts** overlay |
 | `c` | **Clear** search & filters |
@@ -200,7 +201,7 @@ I built `git-scope` to solve the **"Multi-Repo Blindness"** problem. It gives me
 
   - [x] In-app workspace switching with Tab completion
   - [x] Symlink resolution for devcontainers/Codespaces
-  - [x] Background file watcher (real-time updates)
+  - [ ] Background file watcher (real-time updates)
   - [x] Quick actions (`pull --rebase`, `switch`, `create branch`, `merge --no-ff`)
   - [ ] Repo grouping (Service / Team / Stack)
   - [ ] Custom team dashboards
