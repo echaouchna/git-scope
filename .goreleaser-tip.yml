@@ -1,0 +1,60 @@
+version: 2
+
+project_name: git-scope
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: git-scope
+    main: ./cmd/git-scope
+    binary: git-scope
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
+
+release:
+  draft: false
+  prerelease: true
+  replace_existing_artifacts: true
+
+homebrew_casks:
+  - name: git-scope-tip
+    binaries:
+      - git-scope
+    repository:
+      owner: echaouchna
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/echaouchna/git-scope
+    description: Fast TUI dashboard for managing many Git repositories (tip)
+    license: MIT
+    commit_msg_template: "chore(cask): update {{ .ProjectName }} tip to {{ .Tag }}"

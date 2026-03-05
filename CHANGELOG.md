@@ -10,6 +10,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 - Pre-commit configuration with recommended repository hygiene hooks.
 - Local pre-commit hook to validate that `internal/app/version.go` matches the latest version entry in `CHANGELOG.md` (including unreleased versions).
+- Dedicated non-tag GitHub Actions workflow to publish nightly/snapshot builds from `main`.
+- Dedicated GoReleaser tip configuration for snapshot publishing.
+- Homebrew tip cask publishing as `git-scope-tip` while keeping the installed binary name as `git-scope`.
 
 ### Changed
 - Open Project modal now uses a single input for both option search and custom command entry.
