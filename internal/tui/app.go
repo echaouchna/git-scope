@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/echaouchna/git-scope/internal/cache"
 	"github.com/echaouchna/git-scope/internal/config"
+	"github.com/echaouchna/git-scope/internal/fswatch"
 	"github.com/echaouchna/git-scope/internal/model"
 	"github.com/echaouchna/git-scope/internal/scan"
 )
@@ -63,6 +64,48 @@ type scanCompleteMsg struct {
 // scanErrorMsg is sent when scanning fails
 type scanErrorMsg struct {
 	err error
+}
+
+type repoWatcherStartedMsg struct {
+	watcher *fswatch.RepoWatcher
+}
+
+type repoWatchEventMsg struct{}
+
+type repoWatchErrorMsg struct {
+	err error
+}
+
+type repoStatusRefreshMsg struct {
+	repos []model.Repo
+}
+
+func startRepoWatcherCmd(repos []model.Repo, ignore []string) tea.Cmd {
+	return func() tea.Msg {
+		watcher, err := fswatch.NewRepoWatcher(repos, ignore)
+		if err != nil {
+			return repoWatchErrorMsg{err: err}
+		}
+		return repoWatcherStartedMsg{watcher: watcher}
+	}
+}
+
+func waitRepoWatchEventCmd(watcher *fswatch.RepoWatcher) tea.Cmd {
+	return func() tea.Msg {
+		if watcher == nil {
+			return nil
+		}
+		if err := watcher.WaitEvent(); err != nil {
+			return repoWatchErrorMsg{err: err}
+		}
+		return repoWatchEventMsg{}
+	}
+}
+
+func refreshRepoStatusesCmd(repos []model.Repo) tea.Cmd {
+	return func() tea.Msg {
+		return repoStatusRefreshMsg{repos: scan.RefreshStatuses(repos)}
+	}
 }
 
 // openEditorMsg is sent to trigger opening an editor

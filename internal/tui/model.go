@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/echaouchna/git-scope/internal/config"
+	"github.com/echaouchna/git-scope/internal/fswatch"
 	"github.com/echaouchna/git-scope/internal/model"
 	"github.com/echaouchna/git-scope/internal/stats"
 )
@@ -117,6 +118,10 @@ type Model struct {
 	lastActionLogLines     []string
 	lastActionSummary      string
 	actionLogsReturnState  State
+	// Background watcher state
+	repoWatcher         *fswatch.RepoWatcher
+	watchRefreshRunning bool
+	watchRefreshPending bool
 	// Open repo modal state
 	openRepoName      string
 	openRepoPath      string

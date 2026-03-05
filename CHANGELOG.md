@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Background filesystem watcher for real-time status refresh of dirty/staged/untracked repository state.
+
 ### Changed
 - Batch git actions now run in parallel (bounded worker pool).
 - Git actions modal keeps the last run status/progress summary visible after completion.

@@ -87,6 +87,9 @@ func (m Model) handleNonKeyMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 	if updated, cmd, handled := m.handleWorkspaceScanMsgs(msg); handled {
 		return updated, cmd, true
 	}
+	if updated, cmd, handled := m.handleWatcherMsgs(msg); handled {
+		return updated, cmd, true
+	}
 	if updated, cmd, handled := m.handleEditorMsgs(msg); handled {
 		return updated, cmd, true
 	}
@@ -99,6 +102,7 @@ func (m Model) handleNonKeyMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 func (m Model) handleScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case scanCompleteMsg:
+		m.stopRepoWatcher()
 		m.repos = msg.repos
 		m.syncSelectionsWithRepos()
 		m.state = StateReady
@@ -112,7 +116,10 @@ func (m Model) handleScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		default:
 			m.statusMsg = fmt.Sprintf("✓ Found %d repos", len(msg.repos))
 		}
-		return m, nil, true
+		if len(msg.repos) == 0 {
+			return m, nil, true
+		}
+		return m, startRepoWatcherCmd(msg.repos, m.cfg.Ignore), true
 	case scanErrorMsg:
 		m.state = StateError
 		m.err = msg.err
@@ -125,6 +132,7 @@ func (m Model) handleScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 func (m Model) handleWorkspaceScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case workspaceScanCompleteMsg:
+		m.stopRepoWatcher()
 		m.repos = msg.repos
 		m.syncSelectionsWithRepos()
 		m.state = StateReady
@@ -140,10 +148,53 @@ func (m Model) handleWorkspaceScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 			m.nudgeShownThisSession = true
 			nudge.MarkShown()
 		}
-		return m, nil, true
+		return m, startRepoWatcherCmd(msg.repos, m.cfg.Ignore), true
 	case workspaceScanErrorMsg:
 		m.state = StateError
 		m.err = msg.err
+		return m, nil, true
+	default:
+		return m, nil, false
+	}
+}
+
+func (m Model) handleWatcherMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case repoWatcherStartedMsg:
+		m.stopRepoWatcher()
+		m.repoWatcher = msg.watcher
+		m.watchRefreshPending = false
+		m.watchRefreshRunning = false
+		if m.repoWatcher == nil {
+			return m, nil, true
+		}
+		return m, waitRepoWatchEventCmd(m.repoWatcher), true
+	case repoWatchEventMsg:
+		if m.repoWatcher == nil {
+			return m, nil, true
+		}
+		cmds := []tea.Cmd{waitRepoWatchEventCmd(m.repoWatcher)}
+		if !m.watchRefreshRunning {
+			m.watchRefreshRunning = true
+			cmds = append(cmds, refreshRepoStatusesCmd(cloneRepos(m.repos)))
+		} else {
+			m.watchRefreshPending = true
+		}
+		return m, tea.Batch(cmds...), true
+	case repoStatusRefreshMsg:
+		m.watchRefreshRunning = false
+		m.repos = msg.repos
+		m.syncSelectionsWithRepos()
+		m.updateTable()
+		if m.watchRefreshPending {
+			m.watchRefreshPending = false
+			m.watchRefreshRunning = true
+			return m, refreshRepoStatusesCmd(cloneRepos(m.repos)), true
+		}
+		return m, nil, true
+	case repoWatchErrorMsg:
+		m.stopRepoWatcher()
+		m.statusMsg = "⚠ background watcher stopped: " + msg.err.Error()
 		return m, nil, true
 	default:
 		return m, nil, false
@@ -323,6 +374,7 @@ func (m Model) handleReadyKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, false
 	}
 	if msg.String() == "ctrl+c" || msg.String() == "q" {
+		m.stopRepoWatcher()
 		return m, tea.Quit, true
 	}
 	if updated, cmd, handled := m.handleReadyNavigationKeys(msg); handled {
@@ -383,6 +435,7 @@ func (m Model) handleReadyNavigationKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bo
 func (m Model) handleReadyViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
 	case "r":
+		m.stopRepoWatcher()
 		m.state = StateLoading
 		m.statusMsg = "Rescanning..."
 		return m, scanReposCmd(m.cfg, true), true
@@ -624,6 +677,7 @@ func (m Model) handleWorkspaceSwitchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		// Switch to loading state and scan the new workspace
+		m.stopRepoWatcher()
 		m.state = StateLoading
 		m.workspaceInput.Blur()
 		m.workspaceError = ""
@@ -836,4 +890,20 @@ func openBrowserCmd(url string) tea.Cmd {
 		_ = browser.Open(url)
 		return nil
 	}
+}
+
+func cloneRepos(repos []model.Repo) []model.Repo {
+	out := make([]model.Repo, len(repos))
+	copy(out, repos)
+	return out
+}
+
+func (m *Model) stopRepoWatcher() {
+	if m.repoWatcher == nil {
+		return
+	}
+	_ = m.repoWatcher.Close()
+	m.repoWatcher = nil
+	m.watchRefreshRunning = false
+	m.watchRefreshPending = false
 }

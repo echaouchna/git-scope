@@ -102,6 +102,7 @@ git-scope -h           # Show help
   * **📦 Batch Actions** — Run actions on selected repos; if none are selected, runs on the highlighted repo.
   * **🌿 Common Branch Suggestions** — For `switch` (and merge suggestions), branch autocomplete only suggests branches common across targets.
   * **📜 Action Logs On Demand** — Logs are available through the `l` shortcut from the dashboard or Git Actions modal.
+  * **👀 Background File Watcher** — Real-time status refresh updates dirty/staged/untracked signals as files change.
   * **⚡ Blazing Fast** — JSON caching ensures \~10ms launch time even with 50+ repos.
   * **📊 Dashboard Stats** — See branch name, staged/unstaged counts, and last commit time.
   * **💾 Disk Usage** — Visualize `.git` vs `node_modules` size (`d`).
@@ -202,7 +203,7 @@ I built `git-scope` to solve the **"Multi-Repo Blindness"** problem. It gives me
 
   - [x] In-app workspace switching with Tab completion
   - [x] Symlink resolution for devcontainers/Codespaces
-  - [ ] Background file watcher (real-time updates)
+  - [x] Background file watcher (real-time updates)
   - [x] Quick actions (`pull --rebase`, `switch`, `create branch`, `merge --no-ff`)
 
 ## ❓ FAQ

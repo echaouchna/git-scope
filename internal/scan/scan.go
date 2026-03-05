@@ -154,3 +154,27 @@ func PrintJSON(w io.Writer, repos []model.Repo) error {
 	}
 	return nil
 }
+
+// RefreshStatuses updates git status for an already-known repository list.
+// It preserves repo identity fields (name/path) and only refreshes status.
+func RefreshStatuses(repos []model.Repo) []model.Repo {
+	out := make([]model.Repo, len(repos))
+	var wg sync.WaitGroup
+
+	for i := range repos {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			r := repos[idx]
+			status, err := gitstatus.Status(r.Path)
+			r.Status = status
+			if err != nil {
+				r.Status.ScanError = err.Error()
+			}
+			out[idx] = r
+		}(i)
+	}
+
+	wg.Wait()
+	return out
+}
