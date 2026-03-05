@@ -69,7 +69,7 @@ func (m Model) handleWindowAndSpinnerMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		m.resizeTable()
 		return m, nil, true
 	case spinner.TickMsg:
-		if m.state != StateLoading {
+		if m.state != StateLoading && (m.state != StateGitAction || !m.gitActionRunning) {
 			return m, nil, true
 		}
 		var cmd tea.Cmd
@@ -246,48 +246,34 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		m.exitGitActionMode()
 		return m, scanReposCmd(m.cfg, true), true
-	case gitActionRepoDoneMsg:
-		next, cmd := m.handleGitActionRepoDone(msg)
-		return next, cmd, true
+	case gitActionBatchDoneMsg:
+		return m.handleGitActionBatchDone(msg), nil, true
 	default:
 		return m, nil, false
 	}
 }
 
-func (m Model) handleGitActionRepoDone(msg gitActionRepoDoneMsg) (Model, tea.Cmd) {
-	m.gitActionProgressIdx++
-	if msg.err != nil {
-		m.gitActionFailed++
-		if m.gitActionFirstError == "" {
-			m.gitActionFirstError = fmt.Sprintf("%s: %v (%s)", msg.repoName, msg.err, msg.output)
+func (m Model) handleGitActionBatchDone(msg gitActionBatchDoneMsg) Model {
+	for _, result := range msg.results {
+		m.gitActionProgressIdx++
+		if result.err != nil {
+			m.gitActionFailed++
+			if m.gitActionFirstError == "" {
+				m.gitActionFirstError = fmt.Sprintf("%s: %v (%s)", result.repoName, result.err, result.output)
+			}
+			m.gitActionLogLines = append(m.gitActionLogLines, fmt.Sprintf("[%s] ERROR", result.repoName))
+		} else {
+			m.gitActionSuccess++
+			m.gitActionLogLines = append(m.gitActionLogLines, fmt.Sprintf("[%s] OK", result.repoName))
 		}
-		m.gitActionLogLines = append(m.gitActionLogLines, fmt.Sprintf("[%s] ERROR", msg.repoName))
-	} else {
-		m.gitActionSuccess++
-		m.gitActionLogLines = append(m.gitActionLogLines, fmt.Sprintf("[%s] OK", msg.repoName))
-	}
-	if msg.output != "" {
-		for _, line := range strings.Split(msg.output, "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				m.gitActionLogLines = append(m.gitActionLogLines, "  "+line)
+		if result.output != "" {
+			for _, line := range strings.Split(result.output, "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					m.gitActionLogLines = append(m.gitActionLogLines, "  "+line)
+				}
 			}
 		}
-	}
-
-	if m.gitActionProgressIdx < m.gitActionProgressTotal {
-		next := m.gitActionQueue[m.gitActionProgressIdx]
-		m.gitActionCurrentRepo = next.Name
-		m.statusMsg = fmt.Sprintf(
-			"Running %s [%d/%d] on %s (ok:%d fail:%d)",
-			m.gitActionName(),
-			m.gitActionProgressIdx+1,
-			m.gitActionProgressTotal,
-			next.Name,
-			m.gitActionSuccess,
-			m.gitActionFailed,
-		)
-		return m, runSingleGitActionCmd(next, m.gitActionExecArgs)
 	}
 
 	m.gitActionRunning = false
@@ -301,7 +287,7 @@ func (m Model) handleGitActionRepoDone(msg gitActionRepoDoneMsg) (Model, tea.Cmd
 	}
 	m.lastActionSummary = m.statusMsg
 	m.lastActionLogLines = append([]string{}, m.gitActionLogLines...)
-	return m, nil
+	return m
 }
 
 func (m Model) handleStateModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
@@ -692,11 +678,11 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "up", "k":
-		return m.moveGitActionCursor(-1, finished)
+		return m.moveGitActionCursor(-1)
 	case "down", "j":
-		return m.moveGitActionCursor(1, finished)
+		return m.moveGitActionCursor(1)
 	case "1", "2", "3", "4":
-		return m.selectGitActionByNumber(msg.String(), finished)
+		return m.selectGitActionByNumber(msg.String())
 	case "tab":
 		if m.gitActionNeedsBranch() {
 			m.applyNextBranchAutocomplete()
@@ -723,10 +709,7 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) moveGitActionCursor(delta int, finished bool) (tea.Model, tea.Cmd) {
-	if finished {
-		m.resetGitActionRunState()
-	}
+func (m Model) moveGitActionCursor(delta int) (tea.Model, tea.Cmd) {
 	next := m.gitActionCursor + delta
 	if next < 0 || next >= len(m.gitActionMenuLabels()) {
 		return m, nil
@@ -736,10 +719,7 @@ func (m Model) moveGitActionCursor(delta int, finished bool) (tea.Model, tea.Cmd
 	return m.syncGitActionBranchInput()
 }
 
-func (m Model) selectGitActionByNumber(key string, finished bool) (tea.Model, tea.Cmd) {
-	if finished {
-		m.resetGitActionRunState()
-	}
+func (m Model) selectGitActionByNumber(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "1":
 		m.gitActionCursor = 0
@@ -815,17 +795,13 @@ func (m Model) startGitActionRun(finished bool) (tea.Model, tea.Cmd) {
 	m.gitActionFirstError = ""
 	m.gitActionLogLines = nil
 	m.gitActionLogOffset = 0
-	m.gitActionCurrentRepo = repos[0].Name
+	m.gitActionCurrentRepo = fmt.Sprintf("%d repos in parallel", len(repos))
 	m.statusMsg = fmt.Sprintf(
-		"Running %s [%d/%d] on %s (ok:%d fail:%d)",
+		"Running %s on %d repo(s) in parallel",
 		m.gitActionName(),
-		1,
 		m.gitActionProgressTotal,
-		m.gitActionCurrentRepo,
-		0,
-		0,
 	)
-	return m, runSingleGitActionCmd(repos[0], gitArgs)
+	return m, tea.Batch(runParallelGitActionCmd(repos, gitArgs), m.spinner.Tick)
 }
 
 // workspaceScanCompleteMsg is sent when workspace scanning is complete

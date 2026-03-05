@@ -439,18 +439,34 @@ func (m Model) renderGitActionModal() string {
 		}
 	}
 
-	if m.gitActionRunning {
-		current := m.gitActionProgressIdx + 1
+	finished := !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
+	if m.gitActionRunning || finished {
+		current := m.gitActionProgressIdx
 		if current > m.gitActionProgressTotal {
 			current = m.gitActionProgressTotal
 		}
+		label := "Running"
+		if !m.gitActionRunning {
+			label = "Last run"
+		}
+		summaryStyle := lipgloss.NewStyle().Foreground(mutedColor)
+		if finished {
+			if m.gitActionFailed > 0 {
+				summaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true)
+			} else {
+				summaryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true)
+			}
+		}
+		statusLine := fmt.Sprintf("Progress: %d/%d   Success: %d   Failed: %d", current, m.gitActionProgressTotal, m.gitActionSuccess, m.gitActionFailed)
 		content = append(content, "",
-			fmt.Sprintf("Running: %s", m.gitActionCurrentRepo),
-			fmt.Sprintf("Progress: %d/%d   Success: %d   Failed: %d", current, m.gitActionProgressTotal, m.gitActionSuccess, m.gitActionFailed),
+			fmt.Sprintf("%s: %s", label, m.gitActionCurrentRepo),
+			summaryStyle.Render(statusLine),
 		)
+		if m.gitActionRunning {
+			content = append(content, fmt.Sprintf("%s Running action...", m.spinner.View()))
+		}
 	}
 
-	finished := !m.gitActionRunning && m.gitActionProgressTotal > 0 && m.gitActionProgressIdx >= m.gitActionProgressTotal
 	if m.gitActionError != "" {
 		content = append(content, "", lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render("❌ "+m.gitActionError))
 	}

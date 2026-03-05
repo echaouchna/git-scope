@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/echaouchna/git-scope/internal/model"
@@ -22,6 +23,10 @@ type gitActionRepoDoneMsg struct {
 	repoName string
 	err      error
 	output   string
+}
+
+type gitActionBatchDoneMsg struct {
+	results []gitActionRepoDoneMsg
 }
 
 type commonBranchesLoadedMsg struct {
@@ -185,16 +190,49 @@ func (m Model) gitActionArgs() ([]string, error) {
 	}
 }
 
-func runSingleGitActionCmd(repo model.Repo, gitArgs []string) tea.Cmd {
+func runParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("git", gitArgs...)
-		cmd.Dir = repo.Path
-		out, err := cmd.CombinedOutput()
-		return gitActionRepoDoneMsg{
-			repoName: repo.Name,
-			err:      err,
-			output:   strings.TrimSpace(string(out)),
+		results := make([]gitActionRepoDoneMsg, len(repos))
+		if len(repos) == 0 {
+			return gitActionBatchDoneMsg{results: results}
 		}
+
+		type job struct {
+			index int
+			repo  model.Repo
+		}
+
+		workers := len(repos)
+		if workers > 8 {
+			workers = 8
+		}
+		jobs := make(chan job, len(repos))
+		var wg sync.WaitGroup
+
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for j := range jobs {
+					cmd := exec.Command("git", gitArgs...)
+					cmd.Dir = j.repo.Path
+					out, err := cmd.CombinedOutput()
+					results[j.index] = gitActionRepoDoneMsg{
+						repoName: j.repo.Name,
+						err:      err,
+						output:   strings.TrimSpace(string(out)),
+					}
+				}
+			}()
+		}
+
+		for i, repo := range repos {
+			jobs <- job{index: i, repo: repo}
+		}
+		close(jobs)
+		wg.Wait()
+
+		return gitActionBatchDoneMsg{results: results}
 	}
 }
 

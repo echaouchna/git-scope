@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Batch git actions now run in parallel (bounded worker pool).
+- Git actions modal keeps the last run status/progress summary visible after completion.
+- Git actions modal now shows a live spinner while batch actions are running.
+- Git actions completion summary is now colorized:
+  - green when all repositories succeed
+  - red when one or more repositories fail
+
+### Fixed
+- GoReleaser/Homebrew publishing configuration updated to current `homebrew_casks`.
+- Release workflow now uses split tokens: default `GITHUB_TOKEN` for release assets and dedicated tap token for Homebrew repo updates.
+- GoReleaser release retries now replace existing artifacts instead of failing on duplicate asset names.
+
 ## [1.0.0] - 2026-03-05
 
 ### Added
