@@ -30,11 +30,11 @@ Get started in seconds.
 
 ### Homebrew (macOS/Linux)
 ```bash
-brew tap echaouchna/homebrew-tap && brew install git-scope
+brew tap echaouchna/homebrew-tap && brew install --cask git-scope
 ```
 ### Update
 ```bash
-brew upgrade git-scope
+brew upgrade --cask git-scope
 ```
 
 ### From Source (Windows)
