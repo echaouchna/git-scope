@@ -345,13 +345,10 @@ func (m Model) renderHelp() string {
 			keyBinding("esc", "close"),
 		}
 	case m.state == StateOpenRepo:
-		pickRange := "1-2"
-		if len(m.openRepoOptions()) >= 3 {
-			pickRange = "1-3"
-		}
 		items = []string{
+			keyBinding("type", "search"),
 			keyBinding("↑↓", "choose"),
-			keyBinding(pickRange, "pick"),
+			keyBinding("pgup/dn", "page"),
 			keyBinding("enter", "confirm"),
 			keyBinding("esc", "cancel"),
 		}
@@ -480,19 +477,36 @@ func (m Model) renderOpenRepoModal() string {
 		Padding(1, 2).
 		Width(70)
 
-	rawOptions := m.openRepoOptions()
-	options := make([]string, 0, len(rawOptions))
-	for i, option := range rawOptions {
-		options = append(options, fmt.Sprintf("[%d] %s", i+1, option.label))
+	options := m.filteredOpenRepoOptions()
+	visibleRows := m.openRepoVisibleRows()
+	start := m.openRepoOffset
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleRows
+	if end > len(options) {
+		end = len(options)
+	}
+	if start > end {
+		start = 0
+		end = len(options)
+		if end > visibleRows {
+			end = visibleRows
+		}
 	}
 
-	for i := range options {
+	listLines := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		line := options[i].label
 		prefix := "  "
 		if i == m.openRepoChoice {
 			prefix = "➤ "
-			options[i] = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(options[i])
+			line = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(line)
 		}
-		options[i] = prefix + options[i]
+		listLines = append(listLines, prefix+line)
+	}
+	if len(listLines) == 0 {
+		listLines = append(listLines, lipgloss.NewStyle().Foreground(mutedColor).Render("No matching options"))
 	}
 
 	content := []string{
@@ -501,9 +515,11 @@ func (m Model) renderOpenRepoModal() string {
 		"Repository: " + m.openRepoName,
 		"Path: " + m.openRepoPath,
 		"",
-		strings.Join(options, "\n"),
+		"Open: " + m.openRepoInput.View(),
 		"",
-		lipgloss.NewStyle().Foreground(mutedColor).Render("Enter = confirm   Esc = cancel"),
+		strings.Join(listLines, "\n"),
+		"",
+		lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf("Item %d/%d • Enter confirm • Esc cancel", m.openRepoChoice+1, maxInt(1, len(options)))),
 	}
 	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
 

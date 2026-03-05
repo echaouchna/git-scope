@@ -121,8 +121,14 @@ type Model struct {
 	openRepoName      string
 	openRepoPath      string
 	openRepoChoice    int
+	openRepoOffset    int
+	openRepoInput     textinput.Model
 	openRepoHasNeovim bool
 	openRepoNeovimBin string
+	openRepoHasGitUI  bool
+	openRepoGitUIBin  string
+	openRepoHasTig    bool
+	openRepoTigBin    string
 	// Star nudge state
 	showStarNudge         bool
 	nudgeShownThisSession bool
@@ -207,6 +213,11 @@ func NewModel(cfg *config.Config) Model {
 	ci.CharLimit = 80
 	ci.Width = 42
 
+	oi := textinput.New()
+	oi.Placeholder = "Search open options..."
+	oi.CharLimit = 80
+	oi.Width = 42
+
 	// Create spinner with Braille pattern
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -219,6 +230,7 @@ func NewModel(cfg *config.Config) Model {
 		workspaceInput:    wi,
 		gitActionInput:    ai,
 		commandInput:      ci,
+		openRepoInput:     oi,
 		spinner:           sp,
 		state:             StateLoading,
 		sortMode:          SortByDirty,

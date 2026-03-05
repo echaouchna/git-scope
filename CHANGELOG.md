@@ -24,6 +24,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Last action logs viewer (`l`) with explicit open/close behavior.
 - Workspace switch modal (`w`) with path autocomplete and default current workspace.
 - Open project menu on `Enter` with Neovim (when installed) and VS Code options.
+- Open-project menu now includes `gitui` and `tig`.
 - GitHub Actions workflows for CI and release automation.
 - GoReleaser configuration including Homebrew tap publishing.
 - MIT license and refreshed README documentation.
