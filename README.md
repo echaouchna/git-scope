@@ -204,8 +204,6 @@ I built `git-scope` to solve the **"Multi-Repo Blindness"** problem. It gives me
   - [x] Symlink resolution for devcontainers/Codespaces
   - [ ] Background file watcher (real-time updates)
   - [x] Quick actions (`pull --rebase`, `switch`, `create branch`, `merge --no-ff`)
-  - [ ] Repo grouping (Service / Team / Stack)
-  - [ ] Custom team dashboards
 
 ## ❓ FAQ
 
