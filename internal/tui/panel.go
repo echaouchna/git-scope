@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/echaouchna/git-scope/internal/stats"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/echaouchna/git-scope/internal/stats"
 )
 
 // PanelType represents which panel is currently active
