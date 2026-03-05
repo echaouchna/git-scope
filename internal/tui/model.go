@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -534,4 +535,18 @@ func (m Model) targetReposForAction() ([]model.Repo, string) {
 
 func (m Model) gitActionNeedsBranch() bool {
 	return m.gitActionType == GitActionSwitch || m.gitActionType == GitActionCreateBranch || m.gitActionType == GitActionMergeNoFF
+}
+
+func (m Model) currentWorkspacePath() string {
+	if m.activeWorkspace != "" {
+		return m.activeWorkspace
+	}
+	if len(m.cfg.Roots) > 0 && m.cfg.Roots[0] != "" {
+		return m.cfg.Roots[0]
+	}
+	wd, err := os.Getwd()
+	if err == nil {
+		return wd
+	}
+	return ""
 }

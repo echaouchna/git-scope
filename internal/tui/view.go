@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/echaouchna/git-scope/internal/workspace"
 )
 
 // View renders the TUI
@@ -627,12 +628,24 @@ func (m Model) renderWorkspaceModal() string {
 			Render("❌ "+m.workspaceError)
 	}
 
+	// Autocomplete hint (what Tab will apply)
+	autocompleteLine := ""
+	currentPath := m.workspaceInput.Value()
+	if currentPath != "" {
+		completedPath := workspace.CompleteDirectoryPath(currentPath)
+		if completedPath != currentPath {
+			autocompleteLine = "\n" + lipgloss.NewStyle().
+				Foreground(mutedColor).
+				Render("↳ autocomplete: "+completedPath)
+		}
+	}
+
 	// Footer hints
 	footer := lipgloss.NewStyle().
 		Foreground(mutedColor).
 		Render("\n\nTab = complete   Enter = scan   Esc = cancel")
 
-	modalContent := title + "\n\n" + label + m.workspaceInput.View() + errorLine + footer
+	modalContent := title + "\n\n" + label + m.workspaceInput.View() + autocompleteLine + errorLine + footer
 	b.WriteString(modalStyle.Render(modalContent))
 
 	// Help bar

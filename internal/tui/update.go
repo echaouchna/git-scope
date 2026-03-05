@@ -417,7 +417,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Open workspace switch modal
 			if m.state == StateReady {
 				m.state = StateWorkspaceSwitch
-				m.workspaceInput.SetValue("")
+				m.workspaceInput.SetValue(m.currentWorkspacePath())
+				m.workspaceInput.CursorEnd()
 				m.workspaceInput.Focus()
 				m.workspaceError = ""
 				return m, textinput.Blink
