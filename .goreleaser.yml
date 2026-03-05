@@ -1,0 +1,71 @@
+version: 2
+
+project_name: git-scope
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: git-scope
+    main: ./cmd/git-scope
+    binary: git-scope
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
+  prerelease: auto
+
+brews:
+  - ids:
+      - git-scope
+    name: git-scope
+    directory: Formula
+    repository:
+      owner: echaouchna
+      name: homebrew-tap
+      branch: main
+    homepage: https://github.com/echaouchna/git-scope
+    description: Fast TUI dashboard for managing many Git repositories
+    license: MIT
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "chore(brew): update {{ .ProjectName }} to {{ .Tag }}"
+    install: |
+      bin.install "git-scope"
+    test: |
+      system "#{bin}/git-scope", "-v"
