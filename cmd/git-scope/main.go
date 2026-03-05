@@ -11,13 +11,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/echaouchna/git-scope/internal/app"
 	"github.com/echaouchna/git-scope/internal/browser"
 	"github.com/echaouchna/git-scope/internal/config"
 	"github.com/echaouchna/git-scope/internal/scan"
 	"github.com/echaouchna/git-scope/internal/tui"
 )
-
-const version = "1.0.1"
 
 type options struct {
 	ConfigPath  string
@@ -56,12 +55,12 @@ Examples:
   git-scope issue              # Open GitHub issues page
 
 Flags:
-`, version)
+`, app.Version)
 	flag.PrintDefaults()
 }
 
 func printVersion() {
-	fmt.Printf("git-scope v%s\n", version)
+	fmt.Printf("git-scope v%s\n", app.Version)
 }
 
 func main() {

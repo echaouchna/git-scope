@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/echaouchna/git-scope/internal/app"
 	"github.com/echaouchna/git-scope/internal/workspace"
 )
 
@@ -115,7 +116,7 @@ func (m Model) renderDashboard() string {
 
 	// Header with logo on its own line
 	logo := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#A78BFA")).Render("git-scope")
-	version := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Render(" v1.3.0")
+	version := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Render(" v" + app.Version)
 	b.WriteString(logo + version)
 	b.WriteString("\n\n")
 

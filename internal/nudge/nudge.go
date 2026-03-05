@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-)
 
-// Version is the current app version - used to track per-version nudge
-const Version = "1.3.0"
+	"github.com/echaouchna/git-scope/internal/app"
+)
 
 // GitHubRepoURL is the URL to open when user presses S
 const GitHubRepoURL = "https://github.com/echaouchna/git-scope"
@@ -78,7 +77,7 @@ func ShouldShowNudge() bool {
 	state := loadState()
 
 	// Already seen for this version
-	if state.SeenVersion == Version {
+	if state.SeenVersion == app.Version {
 		return false
 	}
 
@@ -93,7 +92,7 @@ func ShouldShowNudge() bool {
 // MarkShown marks the nudge as shown for the current version
 func MarkShown() {
 	state := loadState()
-	state.SeenVersion = Version
+	state.SeenVersion = app.Version
 	state.Dismissed = false
 	_ = saveState(state)
 }
@@ -101,7 +100,7 @@ func MarkShown() {
 // MarkDismissed marks the nudge as dismissed (any key pressed)
 func MarkDismissed() {
 	state := loadState()
-	state.SeenVersion = Version
+	state.SeenVersion = app.Version
 	state.Dismissed = true
 	_ = saveState(state)
 }
@@ -109,7 +108,7 @@ func MarkDismissed() {
 // MarkCompleted marks the nudge as completed (S pressed, GitHub opened)
 func MarkCompleted() {
 	state := loadState()
-	state.SeenVersion = Version
+	state.SeenVersion = app.Version
 	state.Completed = true
 	_ = saveState(state)
 }
