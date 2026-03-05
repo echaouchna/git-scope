@@ -13,6 +13,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Dedicated non-tag GitHub Actions workflow to publish nightly/snapshot builds from `main`.
 - Dedicated GoReleaser tip configuration for snapshot publishing.
 - Homebrew tip cask publishing as `git-scope-tip` while keeping the installed binary name as `git-scope`.
+- Added `justfile` with common developer commands (build, `/tmp` build, test, lint, release checks).
+- Added strict cyclomatic-complexity repro config via `.golangci-gocyclo.yml` and `just cyclo`.
 
 ### Changed
 - Open Project modal now uses a single input for both option search and custom command entry.
@@ -23,6 +25,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Tip Homebrew publish now derives the version from the top (unreleased) version in `CHANGELOG.md`.
 - Tip Homebrew publish no longer requires creating a git tag; it uses an ephemeral `GORELEASER_CURRENT_TAG`.
 - Tip Homebrew publish skips GoReleaser git-tag validation to support no-tag snapshot publishing.
+- Refactored TUI handlers/render helpers to reduce cyclomatic complexity and satisfy strict `>15` checks.
+- Open-project menu now caches tool availability checks (`nvim`, `gitui`, `tig`) to speed up opening the menu.
 
 ## [1.1.0] - 2026-03-05
 

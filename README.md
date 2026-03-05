@@ -7,8 +7,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/echaouchna/git-scope)](https://github.com/echaouchna/git-scope/stargazers)
 
-![git-scope Demo](docs/git-scope-demo-1.webp)
-
 ---
 
 ## 🛡️ Trust & Safety
