@@ -30,16 +30,11 @@ Get started in seconds.
 
 ### Homebrew (macOS/Linux)
 ```bash
-brew tap echaouchna/tap && brew install git-scope
+brew tap echaouchna/homebrew-tap && brew install git-scope
 ```
 ### Update
 ```bash
 brew upgrade git-scope
-```
-
-### Universal Installer (macOS/Linux)
-```bash
-curl -sSL https://raw.githubusercontent.com/echaouchna/git-scope/main/scripts/install.sh | sh
 ```
 
 ### From Source (Windows)
@@ -100,7 +95,8 @@ git-scope -h           # Show help
   * **🔍 Fast Search** — Find repos by name or branch (`/`).
   * **🛡️ Dirty Filter** — Instantly show only repos with uncommitted changes (`f`).
   * **📄 Pagination** — Navigate large repo lists with page-by-page browsing (`[` / `]`). Shows 15 repos per page with a dynamic page indicator.
-  * **🚀 Editor Jump** — Open the selected repo in VSCode, Neovim, Vim, or Helix (`Enter`).
+  * **🚀 Open Project Menu** — Open the selected repo with Neovim, GitUI, Tig, Tig (`--all`), or VS Code (tools shown only when installed).
+  * **🔎 Searchable Open Menu** — Open options can be filtered by typing and are scrollable (`↑/↓`, `PgUp/PgDn`).
   * **☑ Selection Workflow** — Select/deselect repos inline (`Space`), with select/deselect-all (`Ctrl+A`) for filtered results.
   * **⚙️ In-TUI Git Actions** — Action menu with keyboard navigation and branch autocomplete (`a`).
   * **📦 Batch Actions** — Run actions on selected repos; if none are selected, runs on the highlighted repo.
@@ -145,7 +141,7 @@ Typical git workflows involve "tunnel vision"—working deep inside one reposito
 | `Space` | Select/Deselect current repo |
 | `Ctrl+A` | Select/Deselect all filtered repos |
 | `[` / `]` | **Page Navigation** (Previous / Next) |
-| `Enter` | **Open Project Menu** (Neovim if installed / VS Code / dismiss) |
+| `Enter` | **Open Project Menu** |
 | `a` | Open **Git Actions** modal (supports batch run) |
 | `l` | Open **Last Action Logs** (from dashboard or actions modal) |
 | `Ctrl+P` | Open **Command Palette** (search + run commands) |
@@ -176,8 +172,13 @@ ignore:
   - dist
   - .terraform
 
-editor: code # options: code,nvim,lazygit,vim,cursor
+editor: code # any executable command available in PATH
 ```
+
+Notes:
+- `ignore` is fully configurable and supports folders like `.terraform`.
+- Open-project tools (Neovim, GitUI, Tig) appear only if installed on your machine.
+- In the open-project menu: type to filter options, use `↑/↓` and `PgUp/PgDn` to scroll, `Enter` to run.
 
 -----
 
@@ -231,6 +232,10 @@ git-scope is designed for multi-repo (polyrepo) workflows. It is not intended to
 ### What platforms does git-scope support?
 
 git-scope runs on macOS, Linux, and Windows.
+
+### How does Homebrew publishing work?
+
+Releases are built with GoReleaser and the formula is published to `echaouchna/homebrew-tap`.
 
 ### How is git-scope different from other git TUIs?
 
