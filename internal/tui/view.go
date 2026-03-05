@@ -29,6 +29,10 @@ func (m Model) renderContent() string {
 		b.WriteString(m.renderGitActionModal())
 	case StateOpenRepo:
 		b.WriteString(m.renderOpenRepoModal())
+	case StateShortcuts:
+		b.WriteString(m.renderShortcutsModal())
+	case StateCommandPalette:
+		b.WriteString(m.renderCommandPaletteModal())
 	}
 
 	return b.String()
@@ -136,8 +140,6 @@ func (m Model) renderDashboard() string {
 		// Render panel content based on active panel
 		var panelContent string
 		switch m.activePanel {
-		case PanelGrass:
-			panelContent = renderGrassPanel(m.grassData, m.width/2, m.height-15)
 		case PanelDisk:
 			panelContent = renderDiskPanel(m.diskData, m.width/2, m.height-15)
 		case PanelTimeline:
@@ -235,6 +237,15 @@ func (m Model) renderStats() string {
 	if clean > 0 {
 		stats = append(stats, cleanBadgeStyle.Render(fmt.Sprintf("✓ %d clean", clean)))
 	}
+	if selected := m.selectedReposCount(); selected > 0 {
+		selectedBadge := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#000000")).
+			Background(lipgloss.Color("#F59E0B")).
+			Padding(0, 1).
+			Bold(true).
+			Render(fmt.Sprintf("☑ %d selected", selected))
+		stats = append(stats, selectedBadge)
+	}
 
 	// Filter indicator with inline hint
 	if m.filterMode != FilterAll {
@@ -303,11 +314,20 @@ func (m Model) renderHelp() string {
 		}
 	} else if m.state == StateGitAction {
 		items = []string{
-			keyBinding("p", "pull --rebase"),
-			keyBinding("s", "switch"),
-			keyBinding("c", "create"),
-			keyBinding("m", "merge"),
-			keyBinding("tab", "scope"),
+			keyBinding("↑↓", "action"),
+			keyBinding("tab", "autocomplete"),
+			keyBinding("enter", "run"),
+			keyBinding("esc", "cancel"),
+		}
+	} else if m.state == StateShortcuts {
+		items = []string{
+			keyBinding("esc", "close"),
+			keyBinding("?", "close"),
+		}
+	} else if m.state == StateCommandPalette {
+		items = []string{
+			keyBinding("type", "search"),
+			keyBinding("↑↓", "choose"),
 			keyBinding("enter", "run"),
 			keyBinding("esc", "cancel"),
 		}
@@ -327,7 +347,6 @@ func (m Model) renderHelp() string {
 		items = []string{
 			keyBinding("↑↓", "nav"),
 			keyBinding("esc", "close"),
-			keyBinding("g", "grass"),
 			keyBinding("d", "disk"),
 			keyBinding("t", "time"),
 			keyBinding("q", "quit"),
@@ -336,17 +355,12 @@ func (m Model) renderHelp() string {
 		// Normal mode help - Tuimorphic style
 		items = []string{
 			keyBinding("↑↓", "nav"),
-			keyBinding("[]", "page"),
-			keyBinding("enter", "open-menu"),
-			keyBinding("/", "search"),
+			keyBinding("space", "select"),
+			keyBinding("enter", "open"),
 			keyBinding("a", "actions"),
-			keyBinding("w", "workspace"),
-			keyBinding("f", "filter"),
-			keyBinding("s", "sort"),
-			keyBinding("g", "grass"),
-			keyBinding("d", "disk"),
-			keyBinding("t", "time"),
-			keyBinding("r", "rescan"),
+			keyBinding("/", "search"),
+			keyBinding("?", "shortcuts"),
+			keyBinding("ctrl+p", "commands"),
 			keyBinding("q", "quit"),
 		}
 	}
@@ -364,46 +378,66 @@ func (m Model) renderGitActionModal() string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#7C3AED")).
 		Padding(1, 2).
-		Width(70)
+		Width(78)
 
-	scope := "Batch (filtered repos)"
-	if m.gitActionScope == GitActionScopeSelected {
-		scope = "Selected repo only"
+	targets, source := m.targetReposForAction()
+	targetLine := fmt.Sprintf("%d repo(s)", len(targets))
+	if source == "selected" {
+		targetLine += " from selected set"
+	} else {
+		targetLine += " from filtered list"
 	}
 
-	selectedAction := "None"
-	switch m.gitActionType {
-	case GitActionPullRebase:
-		selectedAction = "pull --rebase"
-	case GitActionSwitch:
-		selectedAction = "switch <branch>"
-	case GitActionCreateBranch:
-		selectedAction = "switch -c <branch>"
-	case GitActionMergeNoFF:
-		selectedAction = "merge --no-ff <branch>"
+	actions := m.gitActionMenuLabels()
+	actionLines := make([]string, 0, len(actions))
+	for i, label := range actions {
+		line := fmt.Sprintf("[%d] %s", i+1, label)
+		prefix := "  "
+		if i == m.gitActionCursor {
+			prefix = "➤ "
+			line = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(line)
+		}
+		actionLines = append(actionLines, prefix+line)
 	}
 
 	content := []string{
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("⚙ Git Actions"),
 		"",
-		"Action keys: [p] pull --rebase  [s] switch  [c] create-branch  [m] merge --no-ff",
-		"Scope: " + scope + " (press Tab to toggle)",
-		"Selected action: " + selectedAction,
+		"Targets: " + targetLine,
+		"",
+		"Action:",
+		strings.Join(actionLines, "\n"),
 	}
 
-	if m.gitActionNeedsArg {
+	if m.gitActionNeedsBranch() {
 		content = append(content, "", "Branch: "+m.gitActionInput.View())
+		if m.gitActionLoadingBranch {
+			content = append(content, hintStyle.Render("Loading common branches..."))
+		} else if len(m.gitActionBranchMatches) > 0 {
+			suggestions := m.gitActionBranchMatches
+			if len(suggestions) > 5 {
+				suggestions = suggestions[:5]
+			}
+			content = append(content, hintStyle.Render("Suggestions: "+strings.Join(suggestions, ", ")))
+		} else if len(m.gitActionBranchOptions) > 0 {
+			content = append(content, hintStyle.Render("No match for current input"))
+		}
 	}
 
 	if m.gitActionRunning {
-		content = append(content, "", "Running action... please wait")
+		current := m.gitActionProgressIdx + 1
+		if current > m.gitActionProgressTotal {
+			current = m.gitActionProgressTotal
+		}
+		content = append(content, "",
+			fmt.Sprintf("Running: %s", m.gitActionCurrentRepo),
+			fmt.Sprintf("Progress: %d/%d   Success: %d   Failed: %d", current, m.gitActionProgressTotal, m.gitActionSuccess, m.gitActionFailed),
+		)
 	}
-
 	if m.gitActionError != "" {
 		content = append(content, "", lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render("❌ "+m.gitActionError))
 	}
-
-	content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("Enter = run   Esc = cancel"))
+	content = append(content, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ action, type branch, Tab autocomplete, Enter run, Esc cancel"))
 	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
 
 	b.WriteString("\n\n")
@@ -449,6 +483,105 @@ func (m Model) renderOpenRepoModal() string {
 	}
 	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
 
+	b.WriteString("\n\n")
+	b.WriteString(m.renderHelp())
+	return b.String()
+}
+
+func (m Model) renderShortcutsModal() string {
+	var b strings.Builder
+	b.WriteString(compactLogo())
+	b.WriteString("\n\n")
+
+	modalStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7C3AED")).
+		Padding(1, 2).
+		Width(76)
+
+	items := m.shortcutsEntries()
+	visibleRows := 10
+	if m.height > 0 {
+		if v := m.height - 16; v > 4 {
+			visibleRows = v
+		}
+	}
+	start := m.shortcutsOffset
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleRows
+	if end > len(items) {
+		end = len(items)
+	}
+	if start > end {
+		start = 0
+	}
+
+	listLines := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		line := items[i]
+		prefix := "  "
+		if i == m.shortcutsCursor {
+			prefix = "➤ "
+			line = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(line)
+		}
+		listLines = append(listLines, prefix+line)
+	}
+
+	lines := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Keyboard Shortcuts"),
+		"",
+		strings.Join(listLines, "\n"),
+		"",
+		lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf("Item %d/%d • ↑/↓ scroll • Esc/? close", m.shortcutsCursor+1, len(items))),
+	}
+
+	b.WriteString(modalStyle.Render(strings.Join(lines, "\n")))
+	b.WriteString("\n\n")
+	b.WriteString(m.renderHelp())
+	return b.String()
+}
+
+func (m Model) renderCommandPaletteModal() string {
+	var b strings.Builder
+	b.WriteString(compactLogo())
+	b.WriteString("\n\n")
+
+	modalStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#7C3AED")).
+		Padding(1, 2).
+		Width(76)
+
+	items := m.filteredCommandItems()
+	lines := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Command Palette"),
+		"",
+		"Command: " + m.commandInput.View(),
+		"",
+	}
+
+	if len(items) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("No matching commands"))
+	} else {
+		max := len(items)
+		if max > 8 {
+			max = 8
+		}
+		for i := 0; i < max; i++ {
+			line := items[i].label
+			prefix := "  "
+			if i == m.commandCursor {
+				prefix = "➤ "
+				line = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(line)
+			}
+			lines = append(lines, prefix+line)
+		}
+	}
+
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("Type to search, Enter run, Esc cancel"))
+	b.WriteString(modalStyle.Render(strings.Join(lines, "\n")))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderHelp())
 	return b.String()

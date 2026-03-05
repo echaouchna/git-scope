@@ -26,6 +26,8 @@ const (
 	StateWorkspaceSwitch
 	StateGitAction
 	StateOpenRepo
+	StateShortcuts
+	StateCommandPalette
 )
 
 type GitActionType int
@@ -36,13 +38,6 @@ const (
 	GitActionSwitch
 	GitActionCreateBranch
 	GitActionMergeNoFF
-)
-
-type GitActionScope int
-
-const (
-	GitActionScopeSelected GitActionScope = iota
-	GitActionScopeFiltered
 )
 
 // SortMode represents different sorting options
@@ -83,20 +78,37 @@ type Model struct {
 	searchQuery   string
 	// Panel state
 	activePanel  PanelType
-	grassData    *stats.ContributionData
 	diskData     *stats.DiskUsageData
 	timelineData *stats.TimelineData
 	// Workspace switch state
 	workspaceInput  textinput.Model
 	workspaceError  string
 	activeWorkspace string
+	// Command palette state
+	commandInput  textinput.Model
+	commandCursor int
+	// Shortcuts overlay state
+	shortcutsCursor int
+	shortcutsOffset int
 	// Git action modal state
-	gitActionInput    textinput.Model
-	gitActionType     GitActionType
-	gitActionScope    GitActionScope
-	gitActionNeedsArg bool
-	gitActionError    string
-	gitActionRunning  bool
+	gitActionInput         textinput.Model
+	gitActionType          GitActionType
+	gitActionCursor        int
+	gitActionError         string
+	gitActionRunning       bool
+	gitActionLoadingBranch bool
+	gitActionBranchOptions []string
+	gitActionBranchMatches []string
+	gitActionBranchIndex   int
+	gitActionQueue         []model.Repo
+	gitActionExecArgs      []string
+	gitActionScopeName     string
+	gitActionProgressIdx   int
+	gitActionProgressTotal int
+	gitActionCurrentRepo   string
+	gitActionSuccess       int
+	gitActionFailed        int
+	gitActionFirstError    string
 	// Open repo modal state
 	openRepoName      string
 	openRepoPath      string
@@ -107,13 +119,15 @@ type Model struct {
 	showStarNudge         bool
 	nudgeShownThisSession bool
 	// Pagination state
-	currentPage int
-	pageSize    int
+	currentPage       int
+	pageSize          int
+	selectedRepoPaths map[string]bool
 }
 
 // NewModel creates a new TUI model
 func NewModel(cfg *config.Config) Model {
 	columns := []table.Column{
+		{Title: "Sel", Width: 3},
 		{Title: "Status", Width: 8},
 		{Title: "Repository", Width: 18},
 		{Title: "Branch", Width: 14},
@@ -169,24 +183,30 @@ func NewModel(cfg *config.Config) Model {
 	ai.CharLimit = 100
 	ai.Width = 40
 
+	ci := textinput.New()
+	ci.Placeholder = "Search commands..."
+	ci.CharLimit = 80
+	ci.Width = 42
+
 	// Create spinner with Braille pattern
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#7C3AED"))
 
 	return Model{
-		cfg:            cfg,
-		table:          t,
-		textInput:      ti,
-		workspaceInput: wi,
-		gitActionInput: ai,
-		spinner:        sp,
-		state:          StateLoading,
-		sortMode:       SortByDirty,
-		filterMode:     FilterAll,
-		gitActionScope: GitActionScopeFiltered,
-		currentPage:    0,
-		pageSize:       cfg.PageSize,
+		cfg:               cfg,
+		table:             t,
+		textInput:         ti,
+		workspaceInput:    wi,
+		gitActionInput:    ai,
+		commandInput:      ci,
+		spinner:           sp,
+		state:             StateLoading,
+		sortMode:          SortByDirty,
+		filterMode:        FilterAll,
+		currentPage:       0,
+		pageSize:          cfg.PageSize,
+		selectedRepoPaths: map[string]bool{},
 	}
 }
 
@@ -278,7 +298,7 @@ func (m *Model) sortRepos() {
 func (m *Model) updateTable() {
 	m.applyFilter()
 	m.sortRepos()
-	m.table.SetRows(reposToRows(m.getCurrentPageRepos()))
+	m.table.SetRows(m.reposToRows(m.getCurrentPageRepos()))
 }
 
 // getTotalPages returns the total number of pages
@@ -353,7 +373,7 @@ func (m Model) GetFilterModeName() string {
 }
 
 // reposToRows converts repos to table rows with status indicators
-func reposToRows(repos []model.Repo) []table.Row {
+func (m Model) reposToRows(repos []model.Repo) []table.Row {
 	rows := make([]table.Row, 0, len(repos))
 	for _, r := range repos {
 		lastCommit := "N/A"
@@ -367,7 +387,13 @@ func reposToRows(repos []model.Repo) []table.Row {
 			status = "● Dirty"
 		}
 
+		selected := " "
+		if m.selectedRepoPaths[r.Path] {
+			selected = "✓"
+		}
+
 		rows = append(rows, table.Row{
+			selected,
 			status,
 			truncateString(r.Name, 18),
 			truncateString(r.Status.Branch, 14),
@@ -416,4 +442,96 @@ func (m *Model) resizeTable() {
 		h = 1
 	}
 	m.table.SetHeight(h)
+}
+
+func (m *Model) syncSelectionsWithRepos() {
+	known := map[string]bool{}
+	for _, repo := range m.repos {
+		known[repo.Path] = true
+	}
+	for path := range m.selectedRepoPaths {
+		if !known[path] {
+			delete(m.selectedRepoPaths, path)
+		}
+	}
+}
+
+func (m *Model) toggleCurrentRepoSelection() bool {
+	repo := m.GetSelectedRepo()
+	if repo == nil {
+		return false
+	}
+	if m.selectedRepoPaths[repo.Path] {
+		delete(m.selectedRepoPaths, repo.Path)
+	} else {
+		m.selectedRepoPaths[repo.Path] = true
+	}
+	return true
+}
+
+func (m *Model) toggleSelectAllFiltered() (selected int, deselected bool) {
+	if len(m.sortedRepos) == 0 {
+		return 0, false
+	}
+
+	allSelected := true
+	for _, repo := range m.sortedRepos {
+		if !m.selectedRepoPaths[repo.Path] {
+			allSelected = false
+			break
+		}
+	}
+
+	if allSelected {
+		for _, repo := range m.sortedRepos {
+			delete(m.selectedRepoPaths, repo.Path)
+		}
+		return len(m.sortedRepos), true
+	}
+
+	for _, repo := range m.sortedRepos {
+		m.selectedRepoPaths[repo.Path] = true
+	}
+	return len(m.sortedRepos), false
+}
+
+func (m Model) selectedReposCount() int {
+	return len(m.selectedRepoPaths)
+}
+
+func (m Model) targetReposForAction() ([]model.Repo, string) {
+	if len(m.selectedRepoPaths) > 0 {
+		targets := make([]model.Repo, 0, len(m.selectedRepoPaths))
+		for _, repo := range m.sortedRepos {
+			if m.selectedRepoPaths[repo.Path] {
+				targets = append(targets, repo)
+			}
+		}
+		// Include selected repos not currently visible due to filters/search.
+		if len(targets) < len(m.selectedRepoPaths) {
+			for _, repo := range m.repos {
+				if m.selectedRepoPaths[repo.Path] {
+					found := false
+					for _, t := range targets {
+						if t.Path == repo.Path {
+							found = true
+							break
+						}
+					}
+					if !found {
+						targets = append(targets, repo)
+					}
+				}
+			}
+		}
+		return targets, "selected"
+	}
+
+	targets := make([]model.Repo, len(m.sortedRepos))
+	copy(targets, m.sortedRepos)
+	return targets, "filtered"
+}
+
+func (m Model) gitActionNeedsBranch() bool {
+	return m.gitActionType == GitActionSwitch || m.gitActionType == GitActionCreateBranch || m.gitActionType == GitActionMergeNoFF
 }

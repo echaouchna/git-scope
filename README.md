@@ -101,11 +101,12 @@ git-scope -h           # Show help
   * **🛡️ Dirty Filter** — Instantly show only repos with uncommitted changes (`f`).
   * **📄 Pagination** — Navigate large repo lists with page-by-page browsing (`[` / `]`). Shows 15 repos per page with a dynamic page indicator.
   * **🚀 Editor Jump** — Open the selected repo in VSCode, Neovim, Vim, or Helix (`Enter`).
-  * **⚙️ In-TUI Git Actions** — Run `pull --rebase`, `switch`, `create branch`, and `merge --no-ff` from the dashboard (`a`).
-  * **📦 Batch Actions** — Execute git actions on either the selected repo or all currently filtered repos.
+  * **☑ Selection Workflow** — Select/deselect repos inline (`Space`), with select/deselect-all (`Ctrl+A`) for filtered results.
+  * **⚙️ In-TUI Git Actions** — Action menu with keyboard navigation and branch autocomplete (`a`).
+  * **📦 Batch Actions** — Run actions on selected repos; if none are selected, runs on filtered repos.
+  * **🌿 Common Branch Suggestions** — For `switch` (and merge suggestions), branch autocomplete only suggests branches common across targets.
   * **⚡ Blazing Fast** — JSON caching ensures \~10ms launch time even with 50+ repos.
   * **📊 Dashboard Stats** — See branch name, staged/unstaged counts, and last commit time.
-  * **🌿 Contribution Graph** — GitHub-style local heatmap for your activity (`g`).
   * **💾 Disk Usage** — Visualize `.git` vs `node_modules` size (`d`).
   * **⏰ Timeline** — View recent activity across all projects (`t`).
   * **🔗 Symlink Support** — Symlinked directories resolve transparently (great for Codespaces/devcontainers).
@@ -140,12 +141,15 @@ Typical git workflows involve "tunnel vision"—working deep inside one reposito
 | `f` | **Filter** (Cycle: All / Dirty / Clean) |
 | `s` | Cycle **Sort** Mode |
 | `1`–`4` | Sort by: Dirty / Name / Branch / Recent |
+| `Space` | Select/Deselect current repo |
+| `Ctrl+A` | Select/Deselect all filtered repos |
 | `[` / `]` | **Page Navigation** (Previous / Next) |
 | `Enter` | **Open Project Menu** (Neovim if installed / VS Code / dismiss) |
 | `a` | Open **Git Actions** modal (supports batch run) |
+| `Ctrl+P` | Open **Command Palette** (search + run commands) |
+| `?` | Show **All Shortcuts** overlay |
 | `c` | **Clear** search & filters |
 | `r` | **Rescan** directories |
-| `g` | Toggle **Contribution Graph** |
 | `d` | Toggle **Disk Usage** view |
 | `t` | Toggle **Timeline** view |
 | `q` | Quit |

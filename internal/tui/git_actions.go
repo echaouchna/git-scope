@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,50 +19,86 @@ type gitActionResultMsg struct {
 	firstError string
 }
 
+type gitActionRepoDoneMsg struct {
+	repoName string
+	err      error
+	output   string
+}
+
+type commonBranchesLoadedMsg struct {
+	branches []string
+	err      error
+}
+
 func (m *Model) enterGitActionMode() tea.Cmd {
 	m.state = StateGitAction
-	m.gitActionType = GitActionNone
-	m.gitActionNeedsArg = false
+	m.gitActionCursor = 0
+	m.gitActionType = GitActionPullRebase
 	m.gitActionError = ""
 	m.gitActionRunning = false
+	m.gitActionLoadingBranch = false
 	m.gitActionInput.SetValue("")
 	m.gitActionInput.Blur()
+	m.gitActionBranchOptions = nil
+	m.gitActionBranchMatches = nil
+	m.gitActionBranchIndex = 0
+	m.gitActionQueue = nil
+	m.gitActionExecArgs = nil
+	m.gitActionScopeName = ""
+	m.gitActionProgressIdx = 0
+	m.gitActionProgressTotal = 0
+	m.gitActionCurrentRepo = ""
+	m.gitActionSuccess = 0
+	m.gitActionFailed = 0
+	m.gitActionFirstError = ""
 	return nil
 }
 
 func (m *Model) exitGitActionMode() {
 	m.state = StateReady
+	m.gitActionCursor = 0
 	m.gitActionType = GitActionNone
-	m.gitActionNeedsArg = false
 	m.gitActionError = ""
 	m.gitActionRunning = false
+	m.gitActionLoadingBranch = false
 	m.gitActionInput.SetValue("")
 	m.gitActionInput.Blur()
+	m.gitActionBranchOptions = nil
+	m.gitActionBranchMatches = nil
+	m.gitActionBranchIndex = 0
+	m.gitActionQueue = nil
+	m.gitActionExecArgs = nil
+	m.gitActionScopeName = ""
+	m.gitActionProgressIdx = 0
+	m.gitActionProgressTotal = 0
+	m.gitActionCurrentRepo = ""
+	m.gitActionSuccess = 0
+	m.gitActionFailed = 0
+	m.gitActionFirstError = ""
 }
 
-func (m Model) selectedScopeRepos() []model.Repo {
-	if m.gitActionScope == GitActionScopeSelected {
-		repo := m.GetSelectedRepo()
-		if repo == nil {
-			return nil
-		}
-		return []model.Repo{*repo}
+func (m *Model) setGitActionFromCursor() {
+	switch m.gitActionCursor {
+	case 0:
+		m.gitActionType = GitActionPullRebase
+	case 1:
+		m.gitActionType = GitActionSwitch
+	case 2:
+		m.gitActionType = GitActionCreateBranch
+	case 3:
+		m.gitActionType = GitActionMergeNoFF
+	default:
+		m.gitActionType = GitActionPullRebase
 	}
-
-	if len(m.sortedRepos) == 0 {
-		return nil
-	}
-
-	repos := make([]model.Repo, len(m.sortedRepos))
-	copy(repos, m.sortedRepos)
-	return repos
 }
 
-func (m Model) gitActionScopeName() string {
-	if m.gitActionScope == GitActionScopeSelected {
-		return "selected"
+func (m Model) gitActionMenuLabels() []string {
+	return []string{
+		"pull --rebase",
+		"switch branch",
+		"create branch",
+		"merge --no-ff",
 	}
-	return "batch(filtered)"
 }
 
 func (m Model) gitActionName() string {
@@ -77,6 +114,31 @@ func (m Model) gitActionName() string {
 	default:
 		return ""
 	}
+}
+
+func (m *Model) refreshBranchMatches() {
+	m.gitActionBranchMatches = nil
+	m.gitActionBranchIndex = 0
+	if len(m.gitActionBranchOptions) == 0 {
+		return
+	}
+
+	query := strings.ToLower(strings.TrimSpace(m.gitActionInput.Value()))
+	for _, branch := range m.gitActionBranchOptions {
+		if query == "" || strings.HasPrefix(strings.ToLower(branch), query) {
+			m.gitActionBranchMatches = append(m.gitActionBranchMatches, branch)
+		}
+	}
+}
+
+func (m *Model) applyNextBranchAutocomplete() {
+	if len(m.gitActionBranchMatches) == 0 {
+		return
+	}
+	branch := m.gitActionBranchMatches[m.gitActionBranchIndex]
+	m.gitActionInput.SetValue(branch)
+	m.gitActionInput.CursorEnd()
+	m.gitActionBranchIndex = (m.gitActionBranchIndex + 1) % len(m.gitActionBranchMatches)
 }
 
 func (m Model) gitActionArgs() ([]string, error) {
@@ -128,4 +190,77 @@ func runGitActionCmd(repos []model.Repo, gitArgs []string, actionName, scopeName
 
 		return res
 	}
+}
+
+func runSingleGitActionCmd(repo model.Repo, gitArgs []string) tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("git", gitArgs...)
+		cmd.Dir = repo.Path
+		out, err := cmd.CombinedOutput()
+		return gitActionRepoDoneMsg{
+			repoName: repo.Name,
+			err:      err,
+			output:   strings.TrimSpace(string(out)),
+		}
+	}
+}
+
+func loadCommonBranchesCmd(repos []model.Repo) tea.Cmd {
+	return func() tea.Msg {
+		if len(repos) == 0 {
+			return commonBranchesLoadedMsg{branches: []string{}}
+		}
+
+		common := map[string]bool{}
+		for i, repo := range repos {
+			branches, err := listLocalBranches(repo.Path)
+			if err != nil {
+				return commonBranchesLoadedMsg{err: err}
+			}
+
+			current := map[string]bool{}
+			for _, b := range branches {
+				current[b] = true
+			}
+
+			if i == 0 {
+				for b := range current {
+					common[b] = true
+				}
+				continue
+			}
+
+			for b := range common {
+				if !current[b] {
+					delete(common, b)
+				}
+			}
+		}
+
+		result := make([]string, 0, len(common))
+		for b := range common {
+			result = append(result, b)
+		}
+		sort.Strings(result)
+		return commonBranchesLoadedMsg{branches: result}
+	}
+}
+
+func listLocalBranches(repoPath string) ([]string, error) {
+	cmd := exec.Command("git", "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("list branches in %s: %w", repoPath, err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	branches := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			branches = append(branches, line)
+		}
+	}
+	return branches, nil
 }

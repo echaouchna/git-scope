@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -37,6 +38,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case scanCompleteMsg:
 		m.repos = msg.repos
+		m.syncSelectionsWithRepos()
 		m.state = StateReady
 		m.resetPage()
 		m.updateTable()
@@ -58,6 +60,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case workspaceScanCompleteMsg:
 		m.repos = msg.repos
+		m.syncSelectionsWithRepos()
 		m.state = StateReady
 		m.resetPage()
 		m.updateTable()
@@ -126,13 +129,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, scanReposCmd(m.cfg, true)
 
-	case grassDataLoadedMsg:
-		m.grassData = msg.data
-		if msg.data != nil {
-			m.statusMsg = fmt.Sprintf("🌿 %d commits in %d weeks", msg.data.TotalCommits, msg.data.WeeksCount)
-		}
-		return m, nil
-
 	case diskDataLoadedMsg:
 		m.diskData = msg.data
 		if msg.data != nil {
@@ -147,6 +143,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case commonBranchesLoadedMsg:
+		m.gitActionLoadingBranch = false
+		if msg.err != nil {
+			m.gitActionBranchOptions = nil
+			m.gitActionBranchMatches = nil
+			m.gitActionError = msg.err.Error()
+			return m, nil
+		}
+		m.gitActionBranchOptions = msg.branches
+		m.refreshBranchMatches()
+		return m, nil
+
 	case gitActionResultMsg:
 		m.gitActionRunning = false
 		if msg.failed == 0 {
@@ -155,6 +163,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = fmt.Sprintf("⚠ %s finished: %d ok, %d failed [%s]", msg.actionName, msg.success, msg.failed, msg.scopeName)
 			if msg.firstError != "" {
 				m.statusMsg += " — " + msg.firstError
+			}
+		}
+		m.exitGitActionMode()
+		return m, scanReposCmd(m.cfg, true)
+
+	case gitActionRepoDoneMsg:
+		m.gitActionProgressIdx++
+		if msg.err != nil {
+			m.gitActionFailed++
+			if m.gitActionFirstError == "" {
+				m.gitActionFirstError = fmt.Sprintf("%s: %v (%s)", msg.repoName, msg.err, msg.output)
+			}
+		} else {
+			m.gitActionSuccess++
+		}
+
+		if m.gitActionProgressIdx < m.gitActionProgressTotal {
+			next := m.gitActionQueue[m.gitActionProgressIdx]
+			m.gitActionCurrentRepo = next.Name
+			m.statusMsg = fmt.Sprintf(
+				"Running %s [%d/%d] on %s (ok:%d fail:%d)",
+				m.gitActionName(),
+				m.gitActionProgressIdx+1,
+				m.gitActionProgressTotal,
+				next.Name,
+				m.gitActionSuccess,
+				m.gitActionFailed,
+			)
+			return m, runSingleGitActionCmd(next, m.gitActionExecArgs)
+		}
+
+		// Finished
+		if m.gitActionFailed == 0 {
+			m.statusMsg = fmt.Sprintf("✓ %s completed on %d repo(s) [%s]", m.gitActionName(), m.gitActionSuccess, m.gitActionScopeName)
+		} else {
+			m.statusMsg = fmt.Sprintf("⚠ %s finished: %d ok, %d failed [%s]", m.gitActionName(), m.gitActionSuccess, m.gitActionFailed, m.gitActionScopeName)
+			if m.gitActionFirstError != "" {
+				m.statusMsg += " — " + m.gitActionFirstError
 			}
 		}
 		m.exitGitActionMode()
@@ -177,6 +223,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.state == StateOpenRepo {
 			return m.handleOpenRepoMode(msg)
+		}
+		if m.state == StateShortcuts {
+			return m.handleShortcutsMode(msg)
+		}
+		if m.state == StateCommandPalette {
+			return m.handleCommandPaletteMode(msg)
 		}
 
 		// Normal mode key handling
@@ -202,6 +254,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textInput.SetValue(m.searchQuery)
 				return m, textinput.Blink
 			}
+		case "?":
+			if m.state == StateReady {
+				m.enterShortcutsMode()
+				return m, nil
+			}
+		case "ctrl+p":
+			if m.state == StateReady {
+				return m, m.enterCommandPaletteMode()
+			}
 
 		case "enter":
 			if m.state == StateReady {
@@ -210,6 +271,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.enterOpenRepoMode(repo.Name, repo.Path)
 					return m, nil
 				}
+			}
+		case " ":
+			if m.state == StateReady && m.toggleCurrentRepoSelection() {
+				m.updateTable()
+				m.statusMsg = fmt.Sprintf("Selected repos: %d", m.selectedReposCount())
+				return m, nil
+			}
+		case "ctrl+a":
+			if m.state == StateReady {
+				count, deselected := m.toggleSelectAllFiltered()
+				m.updateTable()
+				if deselected {
+					m.statusMsg = fmt.Sprintf("Deselected %d repos", count)
+				} else {
+					m.statusMsg = fmt.Sprintf("Selected %d repos", count)
+				}
+				return m, nil
 			}
 
 		case "r":
@@ -295,20 +373,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusMsg = fmt.Sprintf("❌ Editor '%s' not found in PATH. Install it or edit ~/.config/git-scope/config.yml", fields[0])
 				} else {
 					m.statusMsg = fmt.Sprintf("✓ Editor: %s (edit config at ~/.config/git-scope/config.yml)", m.cfg.Editor)
-				}
-				return m, nil
-			}
-
-		case "g":
-			// Toggle grass panel
-			if m.state == StateReady {
-				if m.activePanel == PanelGrass {
-					m.activePanel = PanelNone
-					m.statusMsg = ""
-				} else {
-					m.activePanel = PanelGrass
-					m.statusMsg = "🌿 Loading contribution graph..."
-					return m, loadGrassDataCmd(m.repos)
 				}
 				return m, nil
 			}
@@ -450,19 +514,6 @@ type editorClosedMsg struct {
 	err error
 }
 
-// grassDataLoadedMsg is sent when contribution data is loaded
-type grassDataLoadedMsg struct {
-	data *stats.ContributionData
-}
-
-// loadGrassDataCmd loads contribution data from all repos
-func loadGrassDataCmd(repos []model.Repo) tea.Cmd {
-	return func() tea.Msg {
-		data, _ := stats.GetContributions(repos, 12) // Last 12 weeks
-		return grassDataLoadedMsg{data: data}
-	}
-}
-
 // diskDataLoadedMsg is sent when disk usage data is loaded
 type diskDataLoadedMsg struct {
 	data *stats.DiskUsageData
@@ -561,53 +612,89 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	triggerBranchLoad := func(m Model) (tea.Model, tea.Cmd) {
+		if m.gitActionType == GitActionSwitch || m.gitActionType == GitActionMergeNoFF {
+			repos, _ := m.targetReposForAction()
+			m.gitActionLoadingBranch = true
+			m.gitActionError = ""
+			return m, loadCommonBranchesCmd(repos)
+		}
+		m.gitActionLoadingBranch = false
+		m.gitActionBranchOptions = nil
+		m.gitActionBranchMatches = nil
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "esc":
 		m.exitGitActionMode()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
-	case "tab":
-		if m.gitActionScope == GitActionScopeSelected {
-			m.gitActionScope = GitActionScopeFiltered
-		} else {
-			m.gitActionScope = GitActionScopeSelected
+	case "up", "k":
+		if m.gitActionCursor > 0 {
+			m.gitActionCursor--
+			m.setGitActionFromCursor()
+			if m.gitActionNeedsBranch() {
+				m.gitActionInput.Focus()
+				m.gitActionInput.SetValue("")
+				return triggerBranchLoad(m)
+			}
+			m.gitActionInput.Blur()
+			return triggerBranchLoad(m)
 		}
-		m.gitActionError = ""
 		return m, nil
-	case "p":
-		m.gitActionType = GitActionPullRebase
-		m.gitActionNeedsArg = false
-		m.gitActionInput.SetValue("")
+	case "down", "j":
+		if m.gitActionCursor < len(m.gitActionMenuLabels())-1 {
+			m.gitActionCursor++
+			m.setGitActionFromCursor()
+			if m.gitActionNeedsBranch() {
+				m.gitActionInput.Focus()
+				m.gitActionInput.SetValue("")
+				return triggerBranchLoad(m)
+			}
+			m.gitActionInput.Blur()
+			return triggerBranchLoad(m)
+		}
+		return m, nil
+	case "1", "2", "3", "4":
+		switch msg.String() {
+		case "1":
+			m.gitActionCursor = 0
+		case "2":
+			m.gitActionCursor = 1
+		case "3":
+			m.gitActionCursor = 2
+		case "4":
+			m.gitActionCursor = 3
+		}
+		m.setGitActionFromCursor()
+		if m.gitActionNeedsBranch() {
+			m.gitActionInput.Focus()
+			m.gitActionInput.SetValue("")
+			return triggerBranchLoad(m)
+		}
 		m.gitActionInput.Blur()
-		m.gitActionError = ""
-	case "s":
-		m.gitActionType = GitActionSwitch
-		m.gitActionNeedsArg = true
-		m.gitActionError = ""
-		m.gitActionInput.Focus()
-		return m, textinput.Blink
-	case "c":
-		m.gitActionType = GitActionCreateBranch
-		m.gitActionNeedsArg = true
-		m.gitActionError = ""
-		m.gitActionInput.Focus()
-		return m, textinput.Blink
-	case "m":
-		m.gitActionType = GitActionMergeNoFF
-		m.gitActionNeedsArg = true
-		m.gitActionError = ""
-		m.gitActionInput.Focus()
-		return m, textinput.Blink
+		return triggerBranchLoad(m)
+	case "tab":
+		if m.gitActionNeedsBranch() {
+			m.applyNextBranchAutocomplete()
+			m.refreshBranchMatches()
+			return m, nil
+		}
+		return m, nil
 	case "enter":
 		if m.gitActionType == GitActionNone {
-			m.gitActionError = "choose an action first: p/s/c/m"
+			m.gitActionError = "choose an action first"
 			return m, nil
 		}
-		repos := m.selectedScopeRepos()
+		repos, source := m.targetReposForAction()
 		if len(repos) == 0 {
-			m.gitActionError = "no repositories match current scope"
+			m.gitActionError = "no repositories to run against"
 			return m, nil
+		}
+		if (m.gitActionType == GitActionSwitch || m.gitActionType == GitActionMergeNoFF) && strings.TrimSpace(m.gitActionInput.Value()) == "" && len(m.gitActionBranchMatches) > 0 {
+			m.gitActionInput.SetValue(m.gitActionBranchMatches[0])
 		}
 		gitArgs, err := m.gitActionArgs()
 		if err != nil {
@@ -616,13 +703,23 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.gitActionRunning = true
 		m.gitActionError = ""
-		m.statusMsg = fmt.Sprintf("Running %s on %d repo(s)...", m.gitActionName(), len(repos))
-		return m, runGitActionCmd(repos, gitArgs, m.gitActionName(), m.gitActionScopeName())
+		m.gitActionQueue = repos
+		m.gitActionExecArgs = gitArgs
+		m.gitActionScopeName = source
+		m.gitActionProgressIdx = 0
+		m.gitActionProgressTotal = len(repos)
+		m.gitActionSuccess = 0
+		m.gitActionFailed = 0
+		m.gitActionFirstError = ""
+		m.gitActionCurrentRepo = repos[0].Name
+		m.statusMsg = fmt.Sprintf("Running %s [%d/%d] on %s (ok:%d fail:%d)", m.gitActionName(), 1, m.gitActionProgressTotal, m.gitActionCurrentRepo, 0, 0)
+		return m, runSingleGitActionCmd(repos[0], gitArgs)
 	}
 
-	if m.gitActionNeedsArg {
+	if m.gitActionNeedsBranch() {
 		var cmd tea.Cmd
 		m.gitActionInput, cmd = m.gitActionInput.Update(msg)
+		m.refreshBranchMatches()
 		return m, cmd
 	}
 	return m, nil
