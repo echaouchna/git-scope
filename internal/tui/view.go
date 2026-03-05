@@ -300,14 +300,15 @@ func (m Model) renderHelp() string {
 	sep := keyBindingSepStyle.Render(" │ ")
 	var items []string
 
-	if m.state == StateSearching {
+	switch {
+	case m.state == StateSearching:
 		// Search mode help
 		items = []string{
 			keyBinding("type", "search"),
 			keyBinding("enter", "apply"),
 			keyBinding("esc", "cancel"),
 		}
-	} else if m.state == StateWorkspaceSwitch {
+	case m.state == StateWorkspaceSwitch:
 		// Workspace switch mode help
 		items = []string{
 			keyBinding("type", "path"),
@@ -315,7 +316,7 @@ func (m Model) renderHelp() string {
 			keyBinding("enter", "switch"),
 			keyBinding("esc", "cancel"),
 		}
-	} else if m.state == StateGitAction {
+	case m.state == StateGitAction:
 		items = []string{
 			keyBinding("↑↓", "action"),
 			keyBinding("tab", "autocomplete"),
@@ -323,26 +324,26 @@ func (m Model) renderHelp() string {
 			keyBinding("l", "logs"),
 			keyBinding("esc", "cancel"),
 		}
-	} else if m.state == StateShortcuts {
+	case m.state == StateShortcuts:
 		items = []string{
 			keyBinding("esc", "close"),
 			keyBinding("?", "close"),
 		}
-	} else if m.state == StateCommandPalette {
+	case m.state == StateCommandPalette:
 		items = []string{
 			keyBinding("type", "search"),
 			keyBinding("↑↓", "choose"),
 			keyBinding("enter", "run"),
 			keyBinding("esc", "cancel"),
 		}
-	} else if m.state == StateActionLogs {
+	case m.state == StateActionLogs:
 		items = []string{
 			keyBinding("↑↓", "scroll"),
 			keyBinding("pgup/dn", "page"),
 			keyBinding("l", "close"),
 			keyBinding("esc", "close"),
 		}
-	} else if m.state == StateOpenRepo {
+	case m.state == StateOpenRepo:
 		pickRange := "1-2"
 		if len(m.openRepoOptions()) >= 3 {
 			pickRange = "1-3"
@@ -353,7 +354,7 @@ func (m Model) renderHelp() string {
 			keyBinding("enter", "confirm"),
 			keyBinding("esc", "cancel"),
 		}
-	} else if m.activePanel != PanelNone {
+	case m.activePanel != PanelNone:
 		// Panel active help
 		items = []string{
 			keyBinding("↑↓", "nav"),
@@ -362,7 +363,7 @@ func (m Model) renderHelp() string {
 			keyBinding("t", "time"),
 			keyBinding("q", "quit"),
 		}
-	} else {
+	default:
 		// Normal mode help - Tuimorphic style
 		items = []string{
 			keyBinding("↑↓", "nav"),
@@ -394,11 +395,12 @@ func (m Model) renderGitActionModal() string {
 
 	targets, source := m.targetReposForAction()
 	targetLine := fmt.Sprintf("%d repo(s)", len(targets))
-	if source == "selected" {
+	switch source {
+	case "selected":
 		targetLine += " from selected set"
-	} else if source == "highlighted" {
+	case "highlighted":
 		targetLine += " from highlighted row"
-	} else {
+	default:
 		targetLine += " from filtered list"
 	}
 
@@ -425,15 +427,16 @@ func (m Model) renderGitActionModal() string {
 
 	if m.gitActionNeedsBranch() {
 		content = append(content, "", "Branch: "+m.gitActionInput.View())
-		if m.gitActionLoadingBranch {
+		switch {
+		case m.gitActionLoadingBranch:
 			content = append(content, hintStyle.Render("Loading common branches..."))
-		} else if len(m.gitActionBranchMatches) > 0 {
+		case len(m.gitActionBranchMatches) > 0:
 			suggestions := m.gitActionBranchMatches
 			if len(suggestions) > 5 {
 				suggestions = suggestions[:5]
 			}
 			content = append(content, hintStyle.Render("Suggestions: "+strings.Join(suggestions, ", ")))
-		} else if len(m.gitActionBranchOptions) > 0 {
+		case len(m.gitActionBranchOptions) > 0:
 			content = append(content, hintStyle.Render("No match for current input"))
 		}
 	}

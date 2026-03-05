@@ -104,11 +104,12 @@ func (m Model) handleScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		m.state = StateReady
 		m.resetPage()
 		m.updateTable()
-		if len(msg.repos) == 0 {
+		switch {
+		case len(msg.repos) == 0:
 			m.statusMsg = "⚠️  No git repos found in configured directories. Press 'r' to rescan or run 'git-scope init' to configure."
-		} else if msg.fromCache {
+		case msg.fromCache:
 			m.statusMsg = fmt.Sprintf("✓ Loaded %d repos from cache", len(msg.repos))
-		} else {
+		default:
 			m.statusMsg = fmt.Sprintf("✓ Found %d repos", len(msg.repos))
 		}
 		return m, nil, true
@@ -178,7 +179,7 @@ func (m Model) handleOpenEditorMsg(msg openEditorMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		binary = fields[0]
-		args = append(fields[1:], msg.path)
+		args = append(append([]string{}, fields[1:]...), msg.path)
 		label = m.cfg.Editor
 	}
 

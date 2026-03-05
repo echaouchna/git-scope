@@ -13,7 +13,6 @@ import (
 type gitActionResultMsg struct {
 	actionName string
 	scopeName  string
-	total      int
 	success    int
 	failed     int
 	firstError string
@@ -183,32 +182,6 @@ func (m Model) gitActionArgs() ([]string, error) {
 		return []string{"merge", "--no-ff", branch}, nil
 	default:
 		return nil, fmt.Errorf("choose an action first")
-	}
-}
-
-func runGitActionCmd(repos []model.Repo, gitArgs []string, actionName, scopeName string) tea.Cmd {
-	return func() tea.Msg {
-		res := gitActionResultMsg{
-			actionName: actionName,
-			scopeName:  scopeName,
-			total:      len(repos),
-		}
-
-		for _, repo := range repos {
-			cmd := exec.Command("git", gitArgs...)
-			cmd.Dir = repo.Path
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				res.failed++
-				if res.firstError == "" {
-					res.firstError = fmt.Sprintf("%s: %v (%s)", repo.Name, err, strings.TrimSpace(string(out)))
-				}
-				continue
-			}
-			res.success++
-		}
-
-		return res
 	}
 }
 

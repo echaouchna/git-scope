@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/echaouchna/git-scope/internal/stats"
@@ -14,26 +13,11 @@ type PanelType int
 
 const (
 	PanelNone PanelType = iota
-	PanelGrass
 	PanelDisk
 	PanelTimeline
 )
 
-// Heatmap color palette (GitHub-style green gradient)
 var (
-	heatmapLevel0 = lipgloss.NewStyle().Foreground(lipgloss.Color("#161b22")) // No commits (dark)
-	heatmapLevel1 = lipgloss.NewStyle().Foreground(lipgloss.Color("#0e4429")) // Low
-	heatmapLevel2 = lipgloss.NewStyle().Foreground(lipgloss.Color("#006d32")) // Medium-Low
-	heatmapLevel3 = lipgloss.NewStyle().Foreground(lipgloss.Color("#26a641")) // Medium-High
-	heatmapLevel4 = lipgloss.NewStyle().Foreground(lipgloss.Color("#39d353")) // High
-
-	// Panel styling - Tuimorphic borders
-	panelBorderStyle = lipgloss.NewStyle().
-				BorderStyle(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("#30363d")).
-				Padding(0, 1)
-
-	// Active panel border (when focused)
 	panelBorderActiveStyle = lipgloss.NewStyle().
 				BorderStyle(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("#7C3AED")).
@@ -43,9 +27,6 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("#f0f6fc")).
 			MarginBottom(1)
-
-	panelSubtitleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#8b949e"))
 
 	panelMutedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6e7681"))
@@ -74,138 +55,7 @@ func renderSplitPane(leftContent, rightContent string, totalWidth int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, " ", rightPane)
 }
 
-// renderGrassPanel renders the contribution heatmap panel
-func renderGrassPanel(data *stats.ContributionData, width, height int) string {
-	if data == nil {
-		return panelMutedStyle.Render("Loading contribution data...")
-	}
-
-	var b strings.Builder
-
-	// Title with emoji
-	b.WriteString(panelTitleStyle.Render("🌿 Contribution Graph"))
-	b.WriteString("\n")
-
-	// Subtitle with date range (Tuimorphic style)
-	b.WriteString(panelSubtitleStyle.Render(fmt.Sprintf("Last %d weeks", data.WeeksCount)))
-	b.WriteString("\n\n")
-
-	// Month labels
-	months := data.GetMonthLabels()
-	b.WriteString("    ")
-	for i, month := range months {
-		if i > 0 {
-			b.WriteString("  ")
-		}
-		b.WriteString(panelMutedStyle.Render(month))
-	}
-	b.WriteString("\n")
-
-	// Day labels and heatmap grid
-	dayLabels := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-	weeks := data.GetWeeksData()
-
-	// Limit weeks to fit in panel (show last N weeks that fit)
-	maxWeeks := (width - 6) / 2 // Each cell is 2 chars wide
-	if maxWeeks < 1 {
-		maxWeeks = 1
-	}
-	if len(weeks) > maxWeeks {
-		weeks = weeks[len(weeks)-maxWeeks:]
-	}
-
-	// Render each row (day of week)
-	for day := 0; day < 7; day++ {
-		// Only show Mon, Wed, Fri labels to save space
-		if day == 1 || day == 3 || day == 5 {
-			b.WriteString(panelMutedStyle.Render(dayLabels[day][:3]))
-		} else {
-			b.WriteString("   ")
-		}
-		b.WriteString(" ")
-
-		for _, week := range weeks {
-			if day < len(week) {
-				dateStr := week[day]
-				date, _ := stats.ParseDate(dateStr)
-
-				// Don't show future dates
-				if date.After(time.Now()) {
-					b.WriteString("  ")
-					continue
-				}
-
-				level := data.GetIntensityLevel(dateStr)
-				block := getHeatmapBlock(level)
-				b.WriteString(block)
-			}
-		}
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n")
-
-	// Legend
-	b.WriteString(panelMutedStyle.Render("Less "))
-	b.WriteString(getHeatmapBlock(0))
-	b.WriteString(getHeatmapBlock(1))
-	b.WriteString(getHeatmapBlock(2))
-	b.WriteString(getHeatmapBlock(3))
-	b.WriteString(getHeatmapBlock(4))
-	b.WriteString(panelMutedStyle.Render(" More"))
-	b.WriteString("\n\n")
-
-	// Stats
-	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render(
-		fmt.Sprintf("%d", data.TotalCommits)))
-	b.WriteString(panelMutedStyle.Render(" commits in the last "))
-	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render(
-		fmt.Sprintf("%d", data.WeeksCount)))
-	b.WriteString(panelMutedStyle.Render(" weeks"))
-
-	return b.String()
-}
-
-// getHeatmapBlock returns a colored block for the heatmap based on intensity level
-func getHeatmapBlock(level int) string {
-	block := "██" // Full block character (2 chars wide for visibility)
-
-	switch level {
-	case 0:
-		return heatmapLevel0.Render(block)
-	case 1:
-		return heatmapLevel1.Render(block)
-	case 2:
-		return heatmapLevel2.Render(block)
-	case 3:
-		return heatmapLevel3.Render(block)
-	case 4:
-		return heatmapLevel4.Render(block)
-	default:
-		return heatmapLevel0.Render(block)
-	}
-}
-
-// getPanelHelp returns help text for the active panel
-func getPanelHelp(panel PanelType) string {
-	switch panel {
-	case PanelGrass:
-		return helpItem("g", "close") + " • " + helpItem("esc", "close")
-	case PanelDisk:
-		return helpItem("d", "close") + " • " + helpItem("esc", "close")
-	case PanelTimeline:
-		return helpItem("t", "close") + " • " + helpItem("esc", "close")
-	default:
-		return ""
-	}
-}
-
-// Disk usage color palette (warm gradient for size visualization)
 var (
-	diskBarLow        = lipgloss.NewStyle().Foreground(lipgloss.Color("#22c55e")) // Green - small
-	diskBarMed        = lipgloss.NewStyle().Foreground(lipgloss.Color("#eab308")) // Yellow - medium
-	diskBarHigh       = lipgloss.NewStyle().Foreground(lipgloss.Color("#f97316")) // Orange - large
-	diskBarMax        = lipgloss.NewStyle().Foreground(lipgloss.Color("#ef4444")) // Red - huge
 	diskNameStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
 	diskSizeStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true)
 	diskNodeSizeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F97316")).Bold(true) // Orange for node_modules value

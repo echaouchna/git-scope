@@ -268,17 +268,18 @@ func indent(value, prefix string) string {
 func expandDirs(dirs []string) []string {
 	result := make([]string, 0, len(dirs))
 	for _, d := range dirs {
-		if d == "." {
+		switch {
+		case d == ".":
 			if cwd, err := os.Getwd(); err == nil {
 				result = append(result, cwd)
 			}
-		} else if strings.HasPrefix(d, "~/") {
+		case strings.HasPrefix(d, "~/"):
 			if home, err := os.UserHomeDir(); err == nil {
 				result = append(result, filepath.Join(home, d[2:]))
 			}
-		} else if filepath.IsAbs(d) {
+		case filepath.IsAbs(d):
 			result = append(result, d)
-		} else {
+		default:
 			if abs, err := filepath.Abs(d); err == nil {
 				result = append(result, abs)
 			}
