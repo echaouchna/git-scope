@@ -474,8 +474,6 @@ func (m Model) GetFilterModeName() string {
 
 // reposToRows converts repos to table rows with status indicators
 func (m Model) reposToRows(repos []model.Repo) []table.Row {
-	layout := m.currentTableLayout()
-
 	rows := make([]table.Row, 0, len(repos))
 	for _, r := range repos {
 		lastCommit := "N/A"
@@ -497,12 +495,12 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 		rows = append(rows, table.Row{
 			selected,
 			status,
-			truncateString(r.Name, layout.repoWidth),
-			truncateString(r.Status.Branch, layout.branchWidth),
+			r.Name,
+			r.Status.Branch,
 			formatNumber(r.Status.Staged),
 			formatNumber(r.Status.Unstaged),
 			formatNumber(r.Status.Untracked),
-			truncateString(lastCommit, layout.lastCommitWidth),
+			lastCommit,
 		})
 	}
 	return rows
@@ -570,34 +568,56 @@ func (m *Model) applyTableLayout() {
 
 func (m Model) currentTableLayout() tableLayout {
 	tableWidth := m.width - 4
-	if tableWidth < 60 {
-		tableWidth = 60
+	if tableWidth < 36 {
+		tableWidth = 36
 	}
 
-	// Compact column layout for narrow terminals.
-	if tableWidth < 96 {
-		return tableLayout{
-			tableWidth:      tableWidth,
-			statusWidth:     7,
-			repoWidth:       12,
-			branchWidth:     9,
-			stagedWidth:     3,
-			modifiedWidth:   3,
-			untrackedWidth:  3,
-			lastCommitWidth: 10,
+	layout := tableLayout{tableWidth: tableWidth}
+
+	// Table cell style uses horizontal padding of 1 on each side for every column.
+	// Reserve that space so computed content widths align with the rendered table.
+	const columnPaddingBudget = 16 // 8 columns * 2 chars
+	const selWidth = 3
+	contentBudget := tableWidth - columnPaddingBudget - selWidth
+	if contentBudget < 14 {
+		contentBudget = 14
+	}
+
+	// Order: status, repo, branch, staged, modified, untracked, lastCommit.
+	mins := []int{5, 7, 6, 1, 1, 1, 5}
+	weights := []int{1, 4, 3, 1, 1, 1, 2}
+
+	totalMin := 0
+	for _, v := range mins {
+		totalMin += v
+	}
+
+	widths := make([]int, len(mins))
+	copy(widths, mins)
+
+	extra := contentBudget - totalMin
+	for extra > 0 {
+		for i := range widths {
+			if extra == 0 {
+				break
+			}
+			widths[i] += weights[i]
+			extra -= weights[i]
+			if extra < 0 {
+				widths[i] += extra
+				extra = 0
+			}
 		}
 	}
 
-	return tableLayout{
-		tableWidth:      tableWidth,
-		statusWidth:     8,
-		repoWidth:       18,
-		branchWidth:     14,
-		stagedWidth:     6,
-		modifiedWidth:   8,
-		untrackedWidth:  9,
-		lastCommitWidth: 14,
-	}
+	layout.statusWidth = widths[0]
+	layout.repoWidth = widths[1]
+	layout.branchWidth = widths[2]
+	layout.stagedWidth = widths[3]
+	layout.modifiedWidth = widths[4]
+	layout.untrackedWidth = widths[5]
+	layout.lastCommitWidth = widths[6]
+	return layout
 }
 
 func (m *Model) syncSelectionsWithRepos() {

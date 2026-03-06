@@ -29,6 +29,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Last Action Logs modal scrolling now keeps the modal border stable and prevents offset/render desynchronization.
 - Removed disk-usage and timeline panel views/shortcuts from the main screen to simplify navigation.
 - Main dashboard now always renders the repository table at full width (no split-pane mode).
+- Main table column sizing is now responsive across small and large terminals, distributing available width across all columns with emphasis on Repository/Branch.
+- Table rows no longer pre-truncate Repository/Branch/Last Commit values before rendering, reducing unnecessary clipping when column space is available.
 - CI and snapshot Homebrew publishing workflows were merged into a single `ci.yml`.
 - Tip Homebrew publish now derives the version from the top (unreleased) version in `CHANGELOG.md`.
 - Tip Homebrew publish no longer requires creating a git tag; it uses an ephemeral `GORELEASER_CURRENT_TAG`.
