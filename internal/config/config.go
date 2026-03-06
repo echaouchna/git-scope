@@ -9,6 +9,30 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const sampleConfigTemplate = `# Git-Scope Configuration
+# Copy this file to ~/.config/git-scope/config.yml
+
+# Root directories to scan for git repositories
+roots:
+  - ~/code
+  - ~/projects
+
+# Directories to ignore during scanning
+ignore:
+  - node_modules
+  - .next
+  - dist
+  - build
+  - target
+  - .venv
+  - vendor
+  - .terraform
+
+# Editor to open repos in (default: code)
+# Options: code, idea, nvim, vim, etc.
+editor: code
+`
+
 // Config holds the application configuration
 type Config struct {
 	Roots    []string `yaml:"roots"`
@@ -47,6 +71,10 @@ func defaultConfig() *Config {
 // Load reads configuration from a YAML file
 // Returns default config if file doesn't exist
 func Load(path string) (*Config, error) {
+	if _, err := EnsureConfigFile(path); err != nil {
+		return nil, err
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// If file does not exist, return defaults (no error)
@@ -72,6 +100,25 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// EnsureConfigFile creates the config directory and writes an initial config
+// from the sample template when the target file does not exist.
+func EnsureConfigFile(path string) (created bool, err error) {
+	if ConfigExists(path) {
+		return false, nil
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return false, fmt.Errorf("create config dir: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte(sampleConfigTemplate), 0644); err != nil {
+		return false, fmt.Errorf("write initial config: %w", err)
+	}
+
+	return true, nil
 }
 
 // expandPath expands ~ to user home directory and resolves relative paths

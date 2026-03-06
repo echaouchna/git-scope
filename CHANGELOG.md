@@ -9,6 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 - Git Actions modal now dims the action list while a batch run is in progress to emphasize live progress state.
+- When the configured config file path is missing, git-scope now creates the config directory and writes an initial config from the sample template automatically.
 
 ## [1.2.0] - 2026-03-06
 
