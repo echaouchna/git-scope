@@ -235,7 +235,7 @@ func (m Model) renderSelectedRepoPathBar() string {
 		maxWidth = 20
 	}
 
-	pathText := truncateMiddle(repo.Path, maxWidth)
+	pathText := truncatePathFromStart(repo.Path, maxWidth)
 	path := lipgloss.NewStyle().
 		Foreground(textPrimary).
 		Background(bgSurface).
@@ -245,15 +245,17 @@ func (m Model) renderSelectedRepoPathBar() string {
 	return lipgloss.JoinHorizontal(lipgloss.Left, label, " ", path)
 }
 
-func truncateMiddle(s string, maxLen int) string {
+func truncatePathFromStart(s string, maxLen int) string {
 	runes := []rune(s)
-	if maxLen <= 3 || len(runes) <= maxLen {
+	if maxLen <= 4 || len(runes) <= maxLen {
 		return s
 	}
 
-	keepLeft := (maxLen - 3) / 2
-	keepRight := maxLen - 3 - keepLeft
-	return string(runes[:keepLeft]) + "..." + string(runes[len(runes)-keepRight:])
+	keepRight := maxLen - 4
+	if keepRight <= 0 {
+		return ".../"
+	}
+	return ".../" + string(runes[len(runes)-keepRight:])
 }
 
 func (m Model) renderStats() string {

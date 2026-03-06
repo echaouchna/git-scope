@@ -22,6 +22,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Removed the explicit `Run command...` entry from the Open Project menu.
 - Updated Open Project modal/help text to reflect the new search-or-run behavior.
 - Main dashboard now shows a dedicated selected-repo path bar for easier identification when repositories share the same name.
+- Main dashboard selected-repo path bar now truncates long paths from the beginning (`.../tail`) to preserve the most relevant trailing segments.
 - Repository search now matches full repository paths in addition to name/branch, with stricter multi-term matching to reduce irrelevant fuzzy results.
 - Last Action Logs modal now colorizes log output for clearer scanability (`OK`/additions in green, `ERROR`/deletions in red).
 - Last Action Logs modal scrolling now keeps the modal border stable and prevents offset/render desynchronization.
