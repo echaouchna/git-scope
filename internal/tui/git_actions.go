@@ -25,8 +25,21 @@ type gitActionRepoDoneMsg struct {
 	output   string
 }
 
-type gitActionBatchDoneMsg struct {
-	results []gitActionRepoDoneMsg
+type gitActionRunner struct {
+	results chan gitActionRepoDoneMsg
+}
+
+type gitActionRunnerStartedMsg struct {
+	runner *gitActionRunner
+}
+
+type gitActionRepoProgressMsg struct {
+	runner *gitActionRunner
+	result gitActionRepoDoneMsg
+}
+
+type gitActionRunnerDoneMsg struct {
+	runner *gitActionRunner
 }
 
 type commonBranchesLoadedMsg struct {
@@ -190,16 +203,18 @@ func (m Model) gitActionArgs() ([]string, error) {
 	}
 }
 
-func runParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
+func startParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
 	return func() tea.Msg {
-		results := make([]gitActionRepoDoneMsg, len(repos))
+		runner := &gitActionRunner{
+			results: make(chan gitActionRepoDoneMsg, len(repos)),
+		}
 		if len(repos) == 0 {
-			return gitActionBatchDoneMsg{results: results}
+			close(runner.results)
+			return gitActionRunnerStartedMsg{runner: runner}
 		}
 
 		type job struct {
-			index int
-			repo  model.Repo
+			repo model.Repo
 		}
 
 		workers := len(repos)
@@ -217,7 +232,7 @@ func runParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
 					cmd := exec.Command("git", gitArgs...)
 					cmd.Dir = j.repo.Path
 					out, err := cmd.CombinedOutput()
-					results[j.index] = gitActionRepoDoneMsg{
+					runner.results <- gitActionRepoDoneMsg{
 						repoName: j.repo.Name,
 						err:      err,
 						output:   strings.TrimSpace(string(out)),
@@ -226,13 +241,29 @@ func runParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
 			}()
 		}
 
-		for i, repo := range repos {
-			jobs <- job{index: i, repo: repo}
+		for _, repo := range repos {
+			jobs <- job{repo: repo}
 		}
 		close(jobs)
-		wg.Wait()
+		go func() {
+			wg.Wait()
+			close(runner.results)
+		}()
 
-		return gitActionBatchDoneMsg{results: results}
+		return gitActionRunnerStartedMsg{runner: runner}
+	}
+}
+
+func waitGitActionProgressCmd(runner *gitActionRunner) tea.Cmd {
+	return func() tea.Msg {
+		result, ok := <-runner.results
+		if !ok {
+			return gitActionRunnerDoneMsg{runner: runner}
+		}
+		return gitActionRepoProgressMsg{
+			runner: runner,
+			result: result,
+		}
 	}
 }
 
