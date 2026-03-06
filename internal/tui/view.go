@@ -451,12 +451,24 @@ func (m Model) gitActionTargetLine() string {
 func (m Model) gitActionActionLines() []string {
 	actions := m.gitActionMenuLabels()
 	lines := make([]string, 0, len(actions))
+	idleStyle := lipgloss.NewStyle()
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#A78BFA")).
+		Bold(true)
+	if m.gitActionRunning {
+		idleStyle = lipgloss.NewStyle().Foreground(mutedColor)
+		selectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#8B82B8")).
+			Bold(true)
+	}
 	for i, label := range actions {
 		line := fmt.Sprintf("[%d] %s", i+1, label)
 		prefix := "  "
 		if i == m.gitActionCursor {
 			prefix = "➤ "
-			line = lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(line)
+			line = selectedStyle.Render(line)
+		} else {
+			line = idleStyle.Render(line)
 		}
 		lines = append(lines, prefix+line)
 	}
