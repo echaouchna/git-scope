@@ -338,12 +338,7 @@ func itoa(v int) string {
 }
 
 func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	visible := 10
-	if m.height > 0 {
-		if v := m.height - 16; v > 4 {
-			visible = v
-		}
-	}
+	visible := m.actionLogsVisibleRows()
 	maxOffset := 0
 	if len(m.lastActionLogLines) > visible {
 		maxOffset = len(m.lastActionLogLines) - visible
@@ -384,4 +379,14 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+func (m Model) actionLogsVisibleRows() int {
+	visible := 12
+	if m.height > 0 {
+		if v := m.height - 16; v > 4 {
+			visible = v
+		}
+	}
+	return visible
 }

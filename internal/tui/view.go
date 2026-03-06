@@ -739,21 +739,26 @@ func (m Model) renderActionLogsModal() string {
 	b.WriteString(compactLogo())
 	b.WriteString("\n\n")
 
+	const modalWidth = 90
+	const logLineWidth = 82
+
 	modalStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#7C3AED")).
 		Padding(1, 2).
-		Width(90)
+		Width(modalWidth)
 
-	visible := 12
-	if m.height > 0 {
-		if v := m.height - 16; v > 4 {
-			visible = v
-		}
-	}
+	visible := m.actionLogsVisibleRows()
 	start := m.gitActionLogOffset
 	if start < 0 {
 		start = 0
+	}
+	maxOffset := 0
+	if len(m.lastActionLogLines) > visible {
+		maxOffset = len(m.lastActionLogLines) - visible
+	}
+	if start > maxOffset {
+		start = maxOffset
 	}
 	end := start + visible
 	if end > len(m.lastActionLogLines) {
@@ -766,13 +771,15 @@ func (m Model) renderActionLogsModal() string {
 	lines := []string{
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Last Action Logs"),
 		"",
-		m.lastActionSummary,
+		truncateString(m.lastActionSummary, logLineWidth),
 		"",
 	}
 	if len(m.lastActionLogLines) == 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("(no logs)"))
 	} else {
-		lines = append(lines, m.lastActionLogLines[start:end]...)
+		for _, raw := range m.lastActionLogLines[start:end] {
+			lines = append(lines, m.renderLogLine(raw, logLineWidth))
+		}
 		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Log lines %d-%d/%d", start+1, end, len(m.lastActionLogLines))))
 	}
 	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll, PgUp/PgDn page, l/Esc close"))
@@ -780,6 +787,21 @@ func (m Model) renderActionLogsModal() string {
 	b.WriteString("\n\n")
 	b.WriteString(m.renderHelp())
 	return b.String()
+}
+
+func (m Model) renderLogLine(line string, maxWidth int) string {
+	trimmed := truncateString(line, maxWidth)
+	switch {
+	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "] OK"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true).Render(trimmed)
+	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "] ERROR"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true).Render(trimmed)
+	case strings.HasPrefix(trimmed, "  +"), strings.HasPrefix(trimmed, "+"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Render(trimmed)
+	case strings.HasPrefix(trimmed, "  -"), strings.HasPrefix(trimmed, "-"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render(trimmed)
+	}
+	return lipgloss.NewStyle().Foreground(textPrimary).Render(trimmed)
 }
 
 // keyBinding creates a styled key-action pair for the keybindings bar
