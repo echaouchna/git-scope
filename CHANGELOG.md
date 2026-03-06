@@ -25,6 +25,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Main dashboard selected-repo path bar now truncates long paths from the beginning (`.../tail`) to preserve the most relevant trailing segments.
 - Repository column now shows only repository names; inline parent-path suffixes were removed to reduce visual noise.
 - Repository search now matches full repository paths in addition to name/branch, with stricter multi-term matching to reduce irrelevant fuzzy results.
+- Status column keeps plain symbol labels (`● Dirty` / `✓ Clean`) for broad terminal compatibility.
 - Last Action Logs modal now colorizes log output for clearer scanability (`OK`/additions in green, `ERROR`/deletions in red).
 - Last Action Logs modal scrolling now keeps the modal border stable and prevents offset/render desynchronization.
 - Removed disk-usage and timeline panel views/shortcuts from the main screen to simplify navigation.

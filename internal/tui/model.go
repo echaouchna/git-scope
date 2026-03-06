@@ -481,7 +481,7 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 			lastCommit = r.Status.LastCommit.Format("Jan 02 15:04")
 		}
 
-		// Status indicator with text
+		// Status indicator with text.
 		status := "✓ Clean"
 		if r.Status.IsDirty {
 			status = "● Dirty"

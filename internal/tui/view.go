@@ -318,7 +318,7 @@ func (m Model) renderStats() string {
 // renderLegend renders a compact single-line legend (Tuimorphic style)
 func (m Model) renderLegend() string {
 	dirty := dirtyDotStyle.Render("●") + legendStyle.Render(" dirty")
-	clean := cleanDotStyle.Render("○") + legendStyle.Render(" clean")
+	clean := cleanDotStyle.Render("✓") + legendStyle.Render(" clean")
 	editor := legendStyle.Render(fmt.Sprintf("  Editor: %s", m.cfg.Editor))
 
 	return legendStyle.Render(dirty + "  " + clean + editor)
