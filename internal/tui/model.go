@@ -273,6 +273,7 @@ func (m Model) GetSelectedRepo() *model.Repo {
 // applyFilter filters repos based on current filter mode and search query
 func (m *Model) applyFilter() {
 	m.filteredRepos = make([]model.Repo, 0, len(m.repos))
+	query := strings.ToLower(strings.TrimSpace(m.searchQuery))
 
 	for _, r := range m.repos {
 		// Apply filter mode
@@ -288,20 +289,85 @@ func (m *Model) applyFilter() {
 		}
 
 		// Apply search query
-		if m.searchQuery != "" {
-			query := strings.ToLower(m.searchQuery)
-			name := strings.ToLower(r.Name)
-			branch := strings.ToLower(r.Status.Branch)
+		if query != "" {
+			fields := []searchField{
+				{value: strings.ToLower(r.Name), allowFuzzy: true},
+				{value: strings.ToLower(r.Status.Branch), allowFuzzy: true},
+				{value: strings.ToLower(filepath.ToSlash(r.Path)), allowFuzzy: false},
+			}
 
-			// Only search Name and Branch to avoid matching parent paths
-			if !strings.Contains(name, query) &&
-				!strings.Contains(branch, query) {
+			// Space-separated terms must all match at least one field.
+			if !matchesAllSearchTerms(query, fields) {
 				continue
 			}
 		}
 
 		m.filteredRepos = append(m.filteredRepos, r)
 	}
+}
+
+type searchField struct {
+	value      string
+	allowFuzzy bool
+}
+
+func matchesAllSearchTerms(query string, fields []searchField) bool {
+	terms := strings.Fields(query)
+	if len(terms) == 0 {
+		return false
+	}
+	// Keep multi-term queries strict to avoid broad matches on long paths.
+	allowFuzzy := len(terms) == 1
+
+	for _, term := range terms {
+		matched := false
+		for _, field := range fields {
+			if searchTermMatchesField(term, field, allowFuzzy) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+
+	return true
+}
+
+func searchTermMatchesField(term string, field searchField, allowFuzzy bool) bool {
+	candidate := field.value
+	if term == "" || candidate == "" {
+		return false
+	}
+	if strings.Contains(candidate, term) {
+		return true
+	}
+	if !allowFuzzy || !field.allowFuzzy {
+		return false
+	}
+	return fuzzySubsequenceMatch(term, candidate)
+}
+
+// fuzzySubsequenceMatch checks whether all query chars appear in order.
+func fuzzySubsequenceMatch(query, value string) bool {
+	q := []rune(query)
+	v := []rune(value)
+	if len(q) == 0 {
+		return true
+	}
+
+	idx := 0
+	for _, ch := range v {
+		if ch == q[idx] {
+			idx++
+			if idx == len(q) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // sortRepos sorts the filtered repos based on current sort mode
@@ -517,6 +583,9 @@ func (m *Model) resizeTable() {
 		usedHeight++
 	}
 	if m.showStarNudge {
+		usedHeight++
+	}
+	if m.GetSelectedRepo() != nil {
 		usedHeight++
 	}
 

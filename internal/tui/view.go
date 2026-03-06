@@ -156,6 +156,10 @@ func (m Model) renderDashboard() string {
 		b.WriteString(m.table.View())
 	}
 	b.WriteString("\n")
+	if pathBar := m.renderSelectedRepoPathBar(); pathBar != "" {
+		b.WriteString(pathBar)
+		b.WriteString("\n")
+	}
 
 	// Status message if any
 	if m.statusMsg != "" {
@@ -211,6 +215,45 @@ func (m Model) renderSearchBadge() string {
 		Render(" (press c to clear)")
 
 	return searchBadge + clearHint
+}
+
+func (m Model) renderSelectedRepoPathBar() string {
+	repo := m.GetSelectedRepo()
+	if repo == nil {
+		return ""
+	}
+
+	label := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#111827")).
+		Background(lipgloss.Color("#93C5FD")).
+		Padding(0, 1).
+		Bold(true).
+		Render("PATH")
+
+	maxWidth := m.width - 14
+	if maxWidth < 20 {
+		maxWidth = 20
+	}
+
+	pathText := truncateMiddle(repo.Path, maxWidth)
+	path := lipgloss.NewStyle().
+		Foreground(textPrimary).
+		Background(bgSurface).
+		Padding(0, 1).
+		Render(pathText)
+
+	return lipgloss.JoinHorizontal(lipgloss.Left, label, " ", path)
+}
+
+func truncateMiddle(s string, maxLen int) string {
+	runes := []rune(s)
+	if maxLen <= 3 || len(runes) <= maxLen {
+		return s
+	}
+
+	keepLeft := (maxLen - 3) / 2
+	keepRight := maxLen - 3 - keepLeft
+	return string(runes[:keepLeft]) + "..." + string(runes[len(runes)-keepRight:])
 }
 
 func (m Model) renderStats() string {

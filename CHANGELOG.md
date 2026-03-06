@@ -21,6 +21,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - When no open-option matches are found, pressing `Enter` now runs the typed command in the selected repository directory.
 - Removed the explicit `Run command...` entry from the Open Project menu.
 - Updated Open Project modal/help text to reflect the new search-or-run behavior.
+- Main dashboard now shows a dedicated selected-repo path bar for easier identification when repositories share the same name.
+- Repository search now matches full repository paths in addition to name/branch, with stricter multi-term matching to reduce irrelevant fuzzy results.
 - CI and snapshot Homebrew publishing workflows were merged into a single `ci.yml`.
 - Tip Homebrew publish now derives the version from the top (unreleased) version in `CHANGELOG.md`.
 - Tip Homebrew publish no longer requires creating a git tag; it uses an ephemeral `GORELEASER_CURRENT_TAG`.
