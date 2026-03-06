@@ -150,8 +150,6 @@ func (m Model) shortcutsEntries() []string {
 		"View: f cycle filter",
 		"View: s cycle sort",
 		"View: 1..4 set sort mode directly",
-		"Panels: d disk usage",
-		"Panels: t timeline",
 		"Workspace: w switch workspace",
 		"Meta: Ctrl+P open command palette",
 		"Meta: ? open shortcuts",

@@ -136,25 +136,8 @@ func (m Model) renderDashboard() string {
 
 	b.WriteString("\n")
 
-	// Main content area - split pane if panel is active
-	if m.activePanel != PanelNone {
-		// Render table content
-		tableContent := m.table.View()
-
-		// Render panel content based on active panel
-		var panelContent string
-		switch m.activePanel {
-		case PanelDisk:
-			panelContent = renderDiskPanel(m.diskData, m.width/2, m.height-15)
-		case PanelTimeline:
-			panelContent = renderTimelinePanel(m.timelineData, m.width/2, m.height-15)
-		}
-
-		b.WriteString(renderSplitPane(tableContent, panelContent, m.width-4))
-	} else {
-		// Full-width table
-		b.WriteString(m.table.View())
-	}
+	// Main content area
+	b.WriteString(m.table.View())
 	b.WriteString("\n")
 	if pathBar := m.renderSelectedRepoPathBar(); pathBar != "" {
 		b.WriteString(pathBar)
@@ -346,15 +329,15 @@ func (m Model) renderHelp() string {
 	sep := keyBindingSepStyle.Render(" │ ")
 	var items []string
 
-	switch {
-	case m.state == StateSearching:
+	switch m.state {
+	case StateSearching:
 		// Search mode help
 		items = []string{
 			keyBinding("type", "search"),
 			keyBinding("enter", "apply"),
 			keyBinding("esc", "cancel"),
 		}
-	case m.state == StateWorkspaceSwitch:
+	case StateWorkspaceSwitch:
 		// Workspace switch mode help
 		items = []string{
 			keyBinding("type", "path"),
@@ -362,7 +345,7 @@ func (m Model) renderHelp() string {
 			keyBinding("enter", "switch"),
 			keyBinding("esc", "cancel"),
 		}
-	case m.state == StateGitAction:
+	case StateGitAction:
 		items = []string{
 			keyBinding("↑↓", "action"),
 			keyBinding("tab", "autocomplete"),
@@ -370,41 +353,32 @@ func (m Model) renderHelp() string {
 			keyBinding("l", "logs"),
 			keyBinding("esc", "cancel"),
 		}
-	case m.state == StateShortcuts:
+	case StateShortcuts:
 		items = []string{
 			keyBinding("esc", "close"),
 			keyBinding("?", "close"),
 		}
-	case m.state == StateCommandPalette:
+	case StateCommandPalette:
 		items = []string{
 			keyBinding("type", "search"),
 			keyBinding("↑↓", "choose"),
 			keyBinding("enter", "run"),
 			keyBinding("esc", "cancel"),
 		}
-	case m.state == StateActionLogs:
+	case StateActionLogs:
 		items = []string{
 			keyBinding("↑↓", "scroll"),
 			keyBinding("pgup/dn", "page"),
 			keyBinding("l", "close"),
 			keyBinding("esc", "close"),
 		}
-	case m.state == StateOpenRepo:
+	case StateOpenRepo:
 		items = []string{
 			keyBinding("type", "search/cmd"),
 			keyBinding("↑↓", "choose"),
 			keyBinding("pgup/dn", "page"),
 			keyBinding("enter", "confirm/run"),
 			keyBinding("esc", "cancel"),
-		}
-	case m.activePanel != PanelNone:
-		// Panel active help
-		items = []string{
-			keyBinding("↑↓", "nav"),
-			keyBinding("esc", "close"),
-			keyBinding("d", "disk"),
-			keyBinding("t", "time"),
-			keyBinding("q", "quit"),
 		}
 	default:
 		// Normal mode help - Tuimorphic style

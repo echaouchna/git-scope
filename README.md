@@ -103,8 +103,6 @@ git-scope -h           # Show help
   * **👀 Background File Watcher** — Real-time status refresh updates dirty/staged/untracked signals as files change.
   * **⚡ Blazing Fast** — JSON caching ensures \~10ms launch time even with 50+ repos.
   * **📊 Dashboard Stats** — See branch name, staged/unstaged counts, and last commit time.
-  * **💾 Disk Usage** — Visualize `.git` vs `node_modules` size (`d`).
-  * **⏰ Timeline** — View recent activity across all projects (`t`).
   * **🔗 Symlink Support** — Symlinked directories resolve transparently (great for Codespaces/devcontainers).
 
 -----
@@ -147,8 +145,6 @@ Typical git workflows involve "tunnel vision"—working deep inside one reposito
 | `?` | Show **All Shortcuts** overlay |
 | `c` | **Clear** search & filters |
 | `r` | **Rescan** directories |
-| `d` | Toggle **Disk Usage** view |
-| `t` | Toggle **Timeline** view |
 | `q` | Quit |
 
 -----

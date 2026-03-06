@@ -13,7 +13,6 @@ import (
 	"github.com/echaouchna/git-scope/internal/model"
 	"github.com/echaouchna/git-scope/internal/nudge"
 	"github.com/echaouchna/git-scope/internal/scan"
-	"github.com/echaouchna/git-scope/internal/stats"
 	"github.com/echaouchna/git-scope/internal/workspace"
 	"mvdan.cc/sh/v3/shell"
 )
@@ -255,18 +254,6 @@ func (m Model) handleOpenEditorMsg(msg openEditorMsg) (Model, tea.Cmd) {
 
 func (m Model) handlePanelDataMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case diskDataLoadedMsg:
-		m.diskData = msg.data
-		if msg.data != nil {
-			m.statusMsg = fmt.Sprintf("💾 %s total across %d repos", stats.FormatBytes(msg.data.TotalSize), msg.data.RepoCount)
-		}
-		return m, nil, true
-	case timelineDataLoadedMsg:
-		m.timelineData = msg.data
-		if msg.data != nil {
-			m.statusMsg = fmt.Sprintf("⏰ %d repos with recent activity", len(msg.data.Entries))
-		}
-		return m, nil, true
 	case commonBranchesLoadedMsg:
 		m.gitActionLoadingBranch = false
 		if msg.err != nil {
@@ -494,9 +481,6 @@ func (m Model) handleReadyMetaKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	if modelOut, cmd, handled := m.handleReadyMetaNudgeKey(key); handled {
 		return modelOut, cmd, true
 	}
-	if modelOut, cmd, handled := m.handleReadyMetaPanelKey(key); handled {
-		return modelOut, cmd, true
-	}
 	if modelOut, cmd, handled := m.handleReadyMetaGeneralKey(key); handled {
 		return modelOut, cmd, true
 	}
@@ -514,37 +498,6 @@ func (m Model) handleReadyMetaNudgeKey(key string) (tea.Model, tea.Cmd, bool) {
 	nudge.MarkCompleted()
 	m.statusMsg = "⭐ Opening GitHub..."
 	return m, openBrowserCmd(nudge.GitHubRepoURL), true
-}
-
-func (m Model) handleReadyMetaPanelKey(key string) (tea.Model, tea.Cmd, bool) {
-	switch key {
-	case "d":
-		if m.activePanel == PanelDisk {
-			m.activePanel = PanelNone
-			m.statusMsg = ""
-			return m, nil, true
-		}
-		m.activePanel = PanelDisk
-		m.statusMsg = "💾 Calculating disk usage..."
-		return m, loadDiskDataCmd(m.repos), true
-	case "t":
-		if m.activePanel == PanelTimeline {
-			m.activePanel = PanelNone
-			m.statusMsg = ""
-			return m, nil, true
-		}
-		m.activePanel = PanelTimeline
-		m.statusMsg = "⏰ Loading timeline..."
-		return m, loadTimelineDataCmd(m.repos), true
-	case "esc":
-		if m.activePanel != PanelNone {
-			m.activePanel = PanelNone
-			m.statusMsg = ""
-		}
-		return m, nil, true
-	default:
-		return m, nil, false
-	}
 }
 
 func (m Model) handleReadyMetaGeneralKey(key string) (tea.Model, tea.Cmd, bool) {
@@ -648,32 +601,6 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // editorClosedMsg is sent when the editor process closes
 type editorClosedMsg struct {
 	err error
-}
-
-// diskDataLoadedMsg is sent when disk usage data is loaded
-type diskDataLoadedMsg struct {
-	data *stats.DiskUsageData
-}
-
-// loadDiskDataCmd loads disk usage data from all repos
-func loadDiskDataCmd(repos []model.Repo) tea.Cmd {
-	return func() tea.Msg {
-		data, _ := stats.GetDiskUsage(repos)
-		return diskDataLoadedMsg{data: data}
-	}
-}
-
-// timelineDataLoadedMsg is sent when timeline data is loaded
-type timelineDataLoadedMsg struct {
-	data *stats.TimelineData
-}
-
-// loadTimelineDataCmd loads timeline data from all repos
-func loadTimelineDataCmd(repos []model.Repo) tea.Cmd {
-	return func() tea.Msg {
-		data, _ := stats.GetTimeline(repos)
-		return timelineDataLoadedMsg{data: data}
-	}
 }
 
 // handleWorkspaceSwitchMode handles key events when in workspace switch mode

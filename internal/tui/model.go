@@ -15,7 +15,6 @@ import (
 	"github.com/echaouchna/git-scope/internal/config"
 	"github.com/echaouchna/git-scope/internal/fswatch"
 	"github.com/echaouchna/git-scope/internal/model"
-	"github.com/echaouchna/git-scope/internal/stats"
 )
 
 // State represents the current UI state
@@ -80,10 +79,6 @@ type Model struct {
 	sortMode      SortMode
 	filterMode    FilterMode
 	searchQuery   string
-	// Panel state
-	activePanel  PanelType
-	diskData     *stats.DiskUsageData
-	timelineData *stats.TimelineData
 	// Workspace switch state
 	workspaceInput  textinput.Model
 	workspaceError  string
@@ -621,20 +616,8 @@ func (m Model) currentTableLayout() tableLayout {
 		tableWidth = 60
 	}
 
-	if m.activePanel != PanelNone {
-		leftWidth := int(float64(tableWidth) * 0.58)
-		rightWidth := tableWidth - leftWidth - 3
-		if rightWidth < 20 {
-			rightWidth = 20
-			leftWidth = tableWidth - rightWidth - 3
-		}
-		if leftWidth > 0 {
-			tableWidth = leftWidth
-		}
-	}
-
-	// Compact column layout for split-pane and narrow terminals.
-	if m.activePanel != PanelNone || tableWidth < 96 {
+	// Compact column layout for narrow terminals.
+	if tableWidth < 96 {
 		return tableLayout{
 			tableWidth:      tableWidth,
 			statusWidth:     7,
