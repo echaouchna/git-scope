@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,11 +17,31 @@ const (
 	openRepoActionTigAll  = "tig_all"
 	openRepoActionVSCode  = "code"
 	openRepoActionDismiss = "dismiss"
+	openRepoActionCmd     = "cmd:"
+	openRepoActionAlias   = "alias:"
+	openRepoCmdPrefix     = ":"
 )
 
 type openRepoOption struct {
 	label  string
+	helper string
 	action string
+}
+
+type openRepoCommandAlias struct {
+	name    string
+	command string
+	helper  string
+}
+
+func openRepoCommandAliases() []openRepoCommandAlias {
+	return []openRepoCommandAlias{
+		{name: "st", command: "git status --short --branch", helper: "git status (short + branch)"},
+		{name: "fetch", command: "git fetch --all --prune", helper: "fetch all remotes + prune"},
+		{name: "pull", command: "git pull --rebase", helper: "pull with rebase"},
+		{name: "lg", command: "git log --oneline --decorate -20", helper: "show recent commit log"},
+		{name: "sh", command: "$SHELL -i", helper: "open an interactive shell"},
+	}
 }
 
 func (m Model) openRepoOptions() []openRepoOption {
@@ -39,8 +62,14 @@ func (m Model) openRepoOptions() []openRepoOption {
 }
 
 func (m Model) filteredOpenRepoOptions() []openRepoOption {
+	rawQuery := strings.TrimSpace(m.openRepoInput.Value())
+	if strings.HasPrefix(rawQuery, openRepoCmdPrefix) {
+		cmdQuery := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(rawQuery, openRepoCmdPrefix)))
+		return m.filteredOpenRepoBinaryOptions(cmdQuery)
+	}
+
 	options := m.openRepoOptions()
-	query := strings.ToLower(strings.TrimSpace(m.openRepoInput.Value()))
+	query := strings.ToLower(rawQuery)
 	if query == "" {
 		return options
 	}
@@ -52,6 +81,35 @@ func (m Model) filteredOpenRepoOptions() []openRepoOption {
 		}
 	}
 	return filtered
+}
+
+func (m Model) filteredOpenRepoBinaryOptions(query string) []openRepoOption {
+	aliases := openRepoCommandAliases()
+	options := make([]openRepoOption, 0, len(aliases)+len(m.openRepoBinaries))
+
+	for _, alias := range aliases {
+		aliasName := strings.ToLower(alias.name)
+		if query != "" && !strings.Contains(aliasName, query) {
+			continue
+		}
+		options = append(options, openRepoOption{
+			label:  ":" + alias.name,
+			helper: alias.helper,
+			action: openRepoActionAlias + alias.command,
+		})
+	}
+
+	for _, bin := range m.openRepoBinaries {
+		if query != "" && !strings.Contains(strings.ToLower(bin), query) {
+			continue
+		}
+		options = append(options, openRepoOption{
+			label:  ":" + bin,
+			helper: "run binary from PATH",
+			action: openRepoActionCmd + bin,
+		})
+	}
+	return options
 }
 
 func (m Model) openRepoVisibleRows() int {
@@ -104,6 +162,7 @@ func (m *Model) ensureOpenRepoToolsReady() {
 	m.openRepoNeovimBin, m.openRepoHasNeovim = lookupBinary("nvim")
 	m.openRepoGitUIBin, m.openRepoHasGitUI = lookupBinary("gitui")
 	m.openRepoTigBin, m.openRepoHasTig = lookupBinary("tig")
+	m.openRepoBinaries = listAvailableBinaries()
 	m.openRepoToolsReady = true
 }
 
@@ -113,6 +172,72 @@ func lookupBinary(name string) (string, bool) {
 		return "", false
 	}
 	return bin, true
+}
+
+func userShellBinary() string {
+	sh := strings.TrimSpace(os.Getenv("SHELL"))
+	if sh == "" {
+		return "sh"
+	}
+	if filepath.IsAbs(sh) {
+		return sh
+	}
+	if resolved, err := exec.LookPath(sh); err == nil {
+		return resolved
+	}
+	return "sh"
+}
+
+func openRepoShellCommand(path, command string) openEditorMsg {
+	return openEditorMsg{
+		path:   path,
+		cwd:    path,
+		binary: userShellBinary(),
+		args:   []string{"-c", command},
+		label:  "Command",
+	}
+}
+
+func listAvailableBinaries() []string {
+	pathValue := os.Getenv("PATH")
+	if pathValue == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	var bins []string
+	for _, dir := range filepath.SplitList(pathValue) {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if name == "" {
+				continue
+			}
+			if _, exists := seen[name]; exists {
+				continue
+			}
+
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			mode := info.Mode()
+			if mode.IsDir() || mode&0111 == 0 {
+				continue
+			}
+			seen[name] = struct{}{}
+			bins = append(bins, name)
+		}
+	}
+
+	sort.Strings(bins)
+	return bins
 }
 
 func (m *Model) exitOpenRepoMode() {
@@ -192,9 +317,18 @@ func (m *Model) handleOpenRepoNavKey(key string, optsLen, lastIndex int) bool {
 
 func (m Model) handleOpenRepoEnter(opts []openRepoOption, lastIndex int) (tea.Model, tea.Cmd) {
 	if len(opts) == 0 {
-		command := strings.TrimSpace(m.openRepoInput.Value())
+		raw := strings.TrimSpace(m.openRepoInput.Value())
+		if raw == "" {
+			m.statusMsg = "No matching options"
+			return m, nil
+		}
+		if !strings.HasPrefix(raw, openRepoCmdPrefix) {
+			m.statusMsg = "No matching options. Use ':<command>' to run a shell command."
+			return m, nil
+		}
+		command := strings.TrimSpace(strings.TrimPrefix(raw, openRepoCmdPrefix))
 		if command == "" {
-			m.statusMsg = "No matching options and command is empty"
+			m.statusMsg = "Empty command. Use ':<command>'."
 			return m, nil
 		}
 		repoName := m.openRepoName
@@ -202,13 +336,7 @@ func (m Model) handleOpenRepoEnter(opts []openRepoOption, lastIndex int) (tea.Mo
 		m.exitOpenRepoMode()
 		m.statusMsg = "Running command in " + repoName + "..."
 		return m, func() tea.Msg {
-			return openEditorMsg{
-				path:   repoPath,
-				cwd:    repoPath,
-				binary: "sh",
-				args:   []string{"-lc", command},
-				label:  "Command",
-			}
+			return openRepoShellCommand(repoPath, command)
 		}
 	}
 	if m.openRepoChoice < 0 || m.openRepoChoice > lastIndex {
@@ -226,6 +354,9 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 	tigBin := m.openRepoTigBin
 
 	switch action {
+	case openRepoActionDismiss:
+		m.exitOpenRepoMode()
+		return m, nil
 	case openRepoActionNeovim:
 		m.exitOpenRepoMode()
 		m.statusMsg = "Opening " + repoName + " in Neovim..."
@@ -286,6 +417,30 @@ func (m Model) runOpenRepoAction(action string) (tea.Model, tea.Cmd) {
 			}
 		}
 	default:
+		if strings.HasPrefix(action, openRepoActionAlias) {
+			command := strings.TrimSpace(strings.TrimPrefix(action, openRepoActionAlias))
+			if command == "" {
+				m.statusMsg = "Empty alias command."
+				return m, nil
+			}
+			m.exitOpenRepoMode()
+			m.statusMsg = "Running command in " + repoName + "..."
+			return m, func() tea.Msg {
+				return openRepoShellCommand(repoPath, command)
+			}
+		}
+		if strings.HasPrefix(action, openRepoActionCmd) {
+			command := strings.TrimSpace(strings.TrimPrefix(action, openRepoActionCmd))
+			if command == "" {
+				m.statusMsg = "Empty command. Use ':<command>'."
+				return m, nil
+			}
+			m.exitOpenRepoMode()
+			m.statusMsg = "Running command in " + repoName + "..."
+			return m, func() tea.Msg {
+				return openRepoShellCommand(repoPath, command)
+			}
+		}
 		m.exitOpenRepoMode()
 		return m, nil
 	}

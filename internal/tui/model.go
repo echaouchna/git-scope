@@ -130,6 +130,7 @@ type Model struct {
 	openRepoGitUIBin   string
 	openRepoHasTig     bool
 	openRepoTigBin     string
+	openRepoBinaries   []string
 	openRepoToolsReady bool
 	// Star nudge state
 	showStarNudge         bool
@@ -216,7 +217,7 @@ func NewModel(cfg *config.Config) Model {
 	ci.Width = 42
 
 	oi := textinput.New()
-	oi.Placeholder = "Search open options..."
+	oi.Placeholder = "Search options or type :<command>..."
 	oi.CharLimit = 80
 	oi.Width = 42
 

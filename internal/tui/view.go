@@ -572,6 +572,9 @@ func (m Model) renderOpenRepoModal() string {
 	listLines := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
 		line := options[i].label
+		if options[i].helper != "" {
+			line += lipgloss.NewStyle().Foreground(mutedColor).Render("  - " + options[i].helper)
+		}
 		prefix := "  "
 		if i == m.openRepoChoice {
 			prefix = "➤ "
@@ -593,7 +596,7 @@ func (m Model) renderOpenRepoModal() string {
 		"",
 		strings.Join(listLines, "\n"),
 		"",
-		lipgloss.NewStyle().Foreground(mutedColor).Render("If no options match, Enter runs the typed command in this repository."),
+		lipgloss.NewStyle().Foreground(mutedColor).Render("Use ':<command>' (example: ':fish'). Aliases are suggested with short helpers."),
 		lipgloss.NewStyle().Foreground(mutedColor).Render(fmt.Sprintf("Item %d/%d • Enter confirm • Esc cancel", m.openRepoChoice+1, maxInt(1, len(options)))),
 	}
 	b.WriteString(modalStyle.Render(strings.Join(content, "\n")))
