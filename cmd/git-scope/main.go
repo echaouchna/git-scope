@@ -32,6 +32,7 @@ type options struct {
 type standupOptions struct {
 	Since       string
 	AllBranches bool
+	Author      string
 }
 
 func usage() {
@@ -61,6 +62,7 @@ Examples:
   git-scope standup            # Print multi-repo standup summary (24h, all branches)
   git-scope standup 3d         # Last 3 days
   git-scope standup 3d --current-branch # Limit commits to current branch only
+  git-scope standup 3d --author "Jane Doe" # Filter commits by author
   git-scope standup 12h ~/code # Last 12 hours for specific roots
   git-scope pull-rebase        # Pull --rebase across repos
   git-scope switch main        # Switch branch across repos
@@ -191,13 +193,26 @@ func buildRunConfig(cmd string, args []string, configPath string) (*config.Confi
 	} else if cmd == "standup" {
 		dirs = nil
 		remaining := make([]string, 0, len(args))
-		for _, arg := range args {
+		for i := 0; i < len(args); i++ {
+			arg := args[i]
 			if arg == "--all-branches" {
 				standupOpts.AllBranches = true
 				continue
 			}
 			if arg == "--current-branch" {
 				standupOpts.AllBranches = false
+				continue
+			}
+			if strings.HasPrefix(arg, "--author=") {
+				standupOpts.Author = strings.TrimSpace(strings.TrimPrefix(arg, "--author="))
+				continue
+			}
+			if arg == "--author" {
+				// Support: standup ... --author "Name" ...
+				if i+1 < len(args) {
+					standupOpts.Author = strings.TrimSpace(args[i+1])
+					i++
+				}
 				continue
 			}
 			remaining = append(remaining, arg)
@@ -270,10 +285,14 @@ func runStandup(cfg *config.Config, opts standupOptions) error {
 	if opts.AllBranches {
 		scope = "all branches"
 	}
-	fmt.Printf("%s\n\n", standupColorize("1;36", fmt.Sprintf("Standup (%s, %s) — %s", opts.Since, scope, time.Now().Format("2006-01-02"))))
+	title := fmt.Sprintf("Standup (%s, %s)", opts.Since, scope)
+	if opts.Author != "" {
+		title += ", author: " + opts.Author
+	}
+	fmt.Printf("%s\n\n", standupColorize("1;36", fmt.Sprintf("%s — %s", title, time.Now().Format("2006-01-02"))))
 
 	updated := 0
-	results := collectStandupRepoResults(repos, sinceArg, 5, opts.AllBranches)
+	results := collectStandupRepoResults(repos, sinceArg, 5, opts.AllBranches, opts.Author)
 	for _, result := range results {
 		if len(result.commits) == 0 && !result.repo.Status.IsDirty && result.logErr == nil {
 			continue
@@ -297,7 +316,7 @@ type standupRepoResult struct {
 	logErr  error
 }
 
-func collectStandupRepoResults(repos []model.Repo, since string, limit int, allBranches bool) []standupRepoResult {
+func collectStandupRepoResults(repos []model.Repo, since string, limit int, allBranches bool, author string) []standupRepoResult {
 	type task struct {
 		idx  int
 		repo model.Repo
@@ -326,7 +345,7 @@ func collectStandupRepoResults(repos []model.Repo, since string, limit int, allB
 		go func() {
 			defer wg.Done()
 			for t := range tasks {
-				commits, err := repoRecentCommits(t.repo.Path, since, limit, allBranches)
+				commits, err := repoRecentCommits(t.repo.Path, since, limit, allBranches, author)
 				results[t.idx] = standupRepoResult{
 					repo:    t.repo,
 					commits: commits,
@@ -365,12 +384,15 @@ func normalizeSinceArg(input string) string {
 	return input
 }
 
-func repoRecentCommits(repoPath, since string, limit int, allBranches bool) ([]string, error) {
+func repoRecentCommits(repoPath, since string, limit int, allBranches bool, author string) ([]string, error) {
 	args := []string{"log", "--since=" + since}
 	if allBranches {
 		args = append(args, "--all")
 	}
-	args = append(args, "--pretty=format:%h %s", fmt.Sprintf("-%d", limit))
+	if strings.TrimSpace(author) != "" {
+		args = append(args, "--author="+author)
+	}
+	args = append(args, "--pretty=format:%h %an | %s", fmt.Sprintf("-%d", limit))
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoPath
 	out, err := cmd.CombinedOutput()

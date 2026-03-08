@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -22,15 +23,23 @@ func (m *Model) enterCommandPaletteMode() tea.Cmd {
 	m.state = StateCommandPalette
 	m.commandCursor = 0
 	m.commandOffset = 0
+	m.commandStandupAuthors = nil
 	m.commandInput.SetValue("")
 	m.commandInput.Focus()
-	return nil
+	if len(m.repos) == 0 {
+		return nil
+	}
+	return loadStandupAuthorsCmd(cloneRepos(m.repos), "24h", true)
 }
 
 func (m *Model) enterActionLogsMode() {
 	m.actionLogsReturnState = m.state
 	m.state = StateActionLogs
 	m.gitActionLogOffset = 0
+	m.actionLogsInput.SetValue("")
+	m.actionLogsInput.Focus()
+	m.actionLogsAutocomplete = 0
+	m.actionLogsLastQuery = ""
 }
 
 func (m *Model) exitCommandPaletteMode() {
@@ -42,7 +51,7 @@ func (m *Model) exitCommandPaletteMode() {
 }
 
 func (m Model) commandPaletteItems() []commandItem {
-	return []commandItem{
+	items := []commandItem{
 		{label: "Rescan repositories", key: "rescan"},
 		{label: "Open Git actions", key: "actions"},
 		{label: "Toggle filter mode", key: "filter"},
@@ -61,6 +70,13 @@ func (m Model) commandPaletteItems() []commandItem {
 		{label: "Show last action logs", key: "action_logs"},
 		{label: "Quit", key: "quit"},
 	}
+	for _, author := range m.commandStandupAuthors {
+		items = append(items, commandItem{
+			label: fmt.Sprintf("Standup (24h, all branches) by %s", author),
+			key:   "standup_author:" + author,
+		})
+	}
+	return items
 }
 
 func (m Model) filteredCommandItems() []commandItem {
@@ -230,6 +246,13 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 		return m.runStandupFromPalette("3d", false)
 	case "standup_7d_current":
 		return m.runStandupFromPalette("7d", false)
+	default:
+		if strings.HasPrefix(item.key, "standup_author:") {
+			author := strings.TrimPrefix(item.key, "standup_author:")
+			return m.runStandupFromPalette("24h", true, author)
+		}
+	}
+	switch item.key {
 	case "quit":
 		return m, tea.Quit
 	case "action_logs":
@@ -244,17 +267,24 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) runStandupFromPalette(since string, allBranches bool) (tea.Model, tea.Cmd) {
+func (m Model) runStandupFromPalette(since string, allBranches bool, author ...string) (tea.Model, tea.Cmd) {
 	if len(m.repos) == 0 {
 		m.statusMsg = "No repositories loaded"
 		return m, nil
+	}
+	authorFilter := ""
+	if len(author) > 0 {
+		authorFilter = strings.TrimSpace(author[0])
 	}
 	if allBranches {
 		m.statusMsg = "Generating standup (" + since + ", all branches)..."
 	} else {
 		m.statusMsg = "Generating standup (" + since + ")..."
 	}
-	return m, runStandupReportCmd(cloneRepos(m.repos), since, allBranches)
+	if authorFilter != "" {
+		m.statusMsg = "Generating standup (" + since + ", author: " + authorFilter + ")..."
+	}
+	return m, runStandupReportCmd(cloneRepos(m.repos), since, allBranches, authorFilter)
 }
 
 func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -367,23 +397,41 @@ func itoa(v int) string {
 }
 
 func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	lines := m.filteredActionLogLines()
 	visible := m.actionLogsVisibleRows()
 	maxOffset := 0
-	if len(m.lastActionLogLines) > visible {
-		maxOffset = len(m.lastActionLogLines) - visible
+	if len(lines) > visible {
+		maxOffset = len(lines) - visible
 	}
 
 	switch msg.String() {
-	case "esc", "l":
+	case "esc":
 		if m.actionLogsReturnState == StateGitAction {
 			m.state = StateGitAction
 		} else {
 			m.state = StateReady
 		}
 		m.actionLogsReturnState = StateReady
+		m.actionLogsInput.Blur()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
+	case "tab":
+		candidates := m.actionLogsAutocompleteCandidates()
+		if len(candidates) == 0 {
+			return m, nil
+		}
+		query := strings.ToLower(strings.TrimSpace(m.actionLogsInput.Value()))
+		if query != m.actionLogsLastQuery {
+			m.actionLogsAutocomplete = 0
+			m.actionLogsLastQuery = query
+		} else {
+			m.actionLogsAutocomplete = (m.actionLogsAutocomplete + 1) % len(candidates)
+		}
+		m.actionLogsInput.SetValue(candidates[m.actionLogsAutocomplete])
+		m.actionLogsInput.CursorEnd()
+		m.gitActionLogOffset = 0
+		return m, nil
 	case "up", "k":
 		if m.gitActionLogOffset > 0 {
 			m.gitActionLogOffset--
@@ -407,15 +455,127 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.actionLogsInput, cmd = m.actionLogsInput.Update(msg)
+	m.actionLogsAutocomplete = 0
+	m.actionLogsLastQuery = strings.ToLower(strings.TrimSpace(m.actionLogsInput.Value()))
+	m.gitActionLogOffset = 0
+	return m, cmd
 }
 
 func (m Model) actionLogsVisibleRows() int {
 	visible := 12
 	if m.height > 0 {
-		if v := m.height - 16; v > 4 {
+		if v := m.height - 18; v > 4 {
 			visible = v
 		}
 	}
 	return visible
+}
+
+func (m Model) filteredActionLogLines() []string {
+	query := strings.ToLower(strings.TrimSpace(m.actionLogsInput.Value()))
+	if query == "" {
+		return m.lastActionLogLines
+	}
+
+	// Filter by logical blocks (separated by empty lines) so repo context
+	// remains visible when matching commit/body lines.
+	blocks := make([][]string, 0)
+	current := make([]string, 0)
+	for _, line := range m.lastActionLogLines {
+		if strings.TrimSpace(line) == "" {
+			if len(current) > 0 {
+				blocks = append(blocks, current)
+				current = make([]string, 0)
+			}
+			continue
+		}
+		current = append(current, line)
+	}
+	if len(current) > 0 {
+		blocks = append(blocks, current)
+	}
+
+	out := make([]string, 0, len(m.lastActionLogLines))
+	for _, block := range blocks {
+		if len(block) == 0 {
+			continue
+		}
+		header := block[0]
+		headerMatch := strings.Contains(strings.ToLower(header), query)
+
+		// If the header itself matches, keep the whole block for full context.
+		if headerMatch {
+			out = append(out, block...)
+			out = append(out, "")
+			continue
+		}
+
+		keep := make([]string, 0, len(block))
+		matchedCommitLine := false
+		for _, line := range block {
+			if strings.Contains(strings.ToLower(line), query) {
+				if strings.HasPrefix(strings.TrimLeft(line, " "), "+") {
+					matchedCommitLine = true
+				}
+				keep = append(keep, line)
+			}
+		}
+		if len(keep) == 0 {
+			continue
+		}
+
+		// Keep repo header to preserve readability of filtered matches.
+		if header != "" {
+			out = append(out, header)
+		}
+		// If commit lines matched, keep the "commits:" marker when present.
+		if matchedCommitLine {
+			for _, line := range block {
+				if strings.TrimSpace(strings.ToLower(line)) == "commits:" || strings.TrimSpace(strings.ToLower(line)) == "commits" {
+					out = append(out, line)
+					break
+				}
+			}
+		}
+		out = append(out, keep...)
+		out = append(out, "")
+	}
+
+	// Trim trailing separator for cleaner pagination math.
+	for len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+func (m Model) actionLogsAutocompleteCandidates() []string {
+	query := strings.ToLower(strings.TrimSpace(m.actionLogsInput.Value()))
+	seen := map[string]struct{}{}
+	candidates := make([]string, 0)
+
+	for _, line := range m.lastActionLogLines {
+		if strings.HasPrefix(line, "  + ") {
+			trimmed := strings.TrimPrefix(line, "  + ")
+			parts := strings.SplitN(trimmed, " | ", 2)
+			if len(parts) > 0 {
+				left := strings.TrimSpace(parts[0]) // "<hash> <author>"
+				sp := strings.Index(left, " ")
+				if sp >= 0 && sp+1 < len(left) {
+					author := strings.TrimSpace(left[sp+1:])
+					if author != "" {
+						lower := strings.ToLower(author)
+						if query == "" || strings.Contains(lower, query) {
+							if _, ok := seen[author]; !ok {
+								seen[author] = struct{}{}
+								candidates = append(candidates, author)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return candidates
 }

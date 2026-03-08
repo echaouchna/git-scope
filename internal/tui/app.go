@@ -101,9 +101,15 @@ type repoStatusRefreshMsg struct {
 type standupReportMsg struct {
 	since       string
 	allBranches bool
+	author      string
 	summary     string
 	lines       []string
 	err         error
+}
+
+type standupAuthorsLoadedMsg struct {
+	authors []string
+	err     error
 }
 
 func startRepoWatcherCmd(repos []model.Repo, ignore []string) tea.Cmd {
@@ -143,12 +149,13 @@ func startRepoPollTickCmd() tea.Cmd {
 	})
 }
 
-func runStandupReportCmd(repos []model.Repo, since string, allBranches bool) tea.Cmd {
+func runStandupReportCmd(repos []model.Repo, since string, allBranches bool, author string) tea.Cmd {
 	return func() tea.Msg {
-		summary, lines, err := buildStandupReport(repos, since, allBranches)
+		summary, lines, err := buildStandupReport(repos, since, allBranches, author)
 		return standupReportMsg{
 			since:       since,
 			allBranches: allBranches,
+			author:      author,
 			summary:     summary,
 			lines:       lines,
 			err:         err,
@@ -156,7 +163,7 @@ func runStandupReportCmd(repos []model.Repo, since string, allBranches bool) tea
 	}
 }
 
-func buildStandupReport(repos []model.Repo, since string, allBranches bool) (string, []string, error) {
+func buildStandupReport(repos []model.Repo, since string, allBranches bool, author string) (string, []string, error) {
 	if len(repos) == 0 {
 		return "No repositories loaded", nil, nil
 	}
@@ -169,7 +176,7 @@ func buildStandupReport(repos []model.Repo, since string, allBranches bool) (str
 	lines := []string{}
 	active := 0
 
-	results := collectStandupReportResults(repos, sinceArg, 5, allBranches)
+	results := collectStandupReportResults(repos, sinceArg, 5, allBranches, author)
 	for _, result := range results {
 		if len(result.commits) == 0 && !result.repo.Status.IsDirty && result.logErr == nil {
 			continue
@@ -199,10 +206,14 @@ func buildStandupReport(repos []model.Repo, since string, allBranches bool) (str
 	if allBranches {
 		scope = "all branches"
 	}
-	if active == 0 {
-		return fmt.Sprintf("Standup (%s, %s): no activity across %d repos", since, scope, len(repos)), []string{"No recent commits or dirty working trees found."}, nil
+	authorLabel := ""
+	if strings.TrimSpace(author) != "" {
+		authorLabel = ", author: " + author
 	}
-	return fmt.Sprintf("Standup (%s, %s): %d/%d repos with activity", since, scope, active, len(repos)), lines, nil
+	if active == 0 {
+		return fmt.Sprintf("Standup (%s, %s%s): no activity across %d repos", since, scope, authorLabel, len(repos)), []string{"No recent commits or dirty working trees found."}, nil
+	}
+	return fmt.Sprintf("Standup (%s, %s%s): %d/%d repos with activity", since, scope, authorLabel, active, len(repos)), lines, nil
 }
 
 type standupReportResult struct {
@@ -211,7 +222,7 @@ type standupReportResult struct {
 	logErr  error
 }
 
-func collectStandupReportResults(repos []model.Repo, since string, limit int, allBranches bool) []standupReportResult {
+func collectStandupReportResults(repos []model.Repo, since string, limit int, allBranches bool, author string) []standupReportResult {
 	type task struct {
 		idx  int
 		repo model.Repo
@@ -240,7 +251,7 @@ func collectStandupReportResults(repos []model.Repo, since string, limit int, al
 		go func() {
 			defer wg.Done()
 			for t := range tasks {
-				commits, err := repoRecentCommitsForStandup(t.repo.Path, since, limit, allBranches)
+				commits, err := repoRecentCommitsForStandup(t.repo.Path, since, limit, allBranches, author)
 				results[t.idx] = standupReportResult{
 					repo:    t.repo,
 					commits: commits,
@@ -258,12 +269,15 @@ func collectStandupReportResults(repos []model.Repo, since string, limit int, al
 	return results
 }
 
-func repoRecentCommitsForStandup(repoPath, since string, limit int, allBranches bool) ([]string, error) {
+func repoRecentCommitsForStandup(repoPath, since string, limit int, allBranches bool, author string) ([]string, error) {
 	args := []string{"log", "--since=" + since}
 	if allBranches {
 		args = append(args, "--all")
 	}
-	args = append(args, "--pretty=format:%h %s", fmt.Sprintf("-%d", limit))
+	if strings.TrimSpace(author) != "" {
+		args = append(args, "--author="+author)
+	}
+	args = append(args, "--pretty=format:%h %an | %s", fmt.Sprintf("-%d", limit))
 	cmd := exec.Command("git", args...)
 	cmd.Dir = repoPath
 	out, err := cmd.CombinedOutput()
@@ -305,6 +319,108 @@ func normalizeStandupSinceArg(input string) string {
 		}
 	}
 	return input
+}
+
+func loadStandupAuthorsCmd(repos []model.Repo, since string, allBranches bool) tea.Cmd {
+	return func() tea.Msg {
+		authors, err := collectStandupAuthors(repos, normalizeStandupSinceArg(since), allBranches)
+		return standupAuthorsLoadedMsg{authors: authors, err: err}
+	}
+}
+
+func collectStandupAuthors(repos []model.Repo, since string, allBranches bool) ([]string, error) {
+	type task struct {
+		idx  int
+		repo model.Repo
+	}
+
+	if len(repos) == 0 {
+		return nil, nil
+	}
+
+	workerCount := runtime.NumCPU()
+	if workerCount < 4 {
+		workerCount = 4
+	}
+	if workerCount > 24 {
+		workerCount = 24
+	}
+	if workerCount > len(repos) {
+		workerCount = len(repos)
+	}
+
+	tasks := make(chan task, workerCount)
+	out := make(chan []string, len(repos))
+	errs := make(chan error, len(repos))
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer wg.Done()
+			for t := range tasks {
+				authors, err := repoActiveAuthors(t.repo.Path, since, allBranches)
+				if err != nil {
+					errs <- err
+					continue
+				}
+				out <- authors
+			}
+		}()
+	}
+
+	for i, repo := range repos {
+		tasks <- task{idx: i, repo: repo}
+	}
+	close(tasks)
+	wg.Wait()
+	close(out)
+	close(errs)
+
+	seen := map[string]struct{}{}
+	for group := range out {
+		for _, a := range group {
+			if a == "" {
+				continue
+			}
+			seen[a] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for a := range seen {
+		result = append(result, a)
+	}
+	sort.Strings(result)
+
+	for err := range errs {
+		if err != nil {
+			// Non-fatal: keep partial author list.
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func repoActiveAuthors(repoPath, since string, allBranches bool) ([]string, error) {
+	args := []string{"log", "--since=" + since}
+	if allBranches {
+		args = append(args, "--all")
+	}
+	args = append(args, "--format=%an")
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git log authors: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return nil, nil
+	}
+	lines := strings.Split(raw, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	return lines, nil
 }
 
 // openEditorMsg is sent to trigger opening an editor

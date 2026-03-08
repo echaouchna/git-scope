@@ -78,6 +78,19 @@ func TestBuildRunConfigStandupCurrentBranchOverride(t *testing.T) {
 	}
 }
 
+func TestBuildRunConfigStandupAuthorFilter(t *testing.T) {
+	t.Parallel()
+
+	cfgPath := filepath.Join(t.TempDir(), "config.yml")
+	_, _, opts, err := buildRunConfig("standup", []string{"3d", "--author", "Jane Doe"}, cfgPath)
+	if err != nil {
+		t.Fatalf("buildRunConfig returned error: %v", err)
+	}
+	if opts.Author != "Jane Doe" {
+		t.Fatalf("expected author filter to be set, got %q", opts.Author)
+	}
+}
+
 func TestRepoRecentCommitsAllBranchesFlag(t *testing.T) {
 	t.Parallel()
 
@@ -97,7 +110,7 @@ func TestRepoRecentCommitsAllBranchesFlag(t *testing.T) {
 	runGit(t, repo, "commit", "-m", "feature branch commit")
 	runGit(t, repo, "checkout", currentBranch)
 
-	currentOnly, err := repoRecentCommits(repo, "7 days ago", 20, false)
+	currentOnly, err := repoRecentCommits(repo, "7 days ago", 20, false, "")
 	if err != nil {
 		t.Fatalf("repoRecentCommits current branch error: %v", err)
 	}
@@ -105,12 +118,50 @@ func TestRepoRecentCommitsAllBranchesFlag(t *testing.T) {
 		t.Fatalf("did not expect feature commit in current-branch log: %v", currentOnly)
 	}
 
-	allBranches, err := repoRecentCommits(repo, "7 days ago", 20, true)
+	allBranches, err := repoRecentCommits(repo, "7 days ago", 20, true, "")
 	if err != nil {
 		t.Fatalf("repoRecentCommits all branches error: %v", err)
 	}
 	if !containsLine(allBranches, "feature branch commit") {
 		t.Fatalf("expected feature commit in all-branches log: %v", allBranches)
+	}
+}
+
+func TestRepoRecentCommitsAuthorFilter(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.name", "Main User")
+	runGit(t, repo, "config", "user.email", "main@example.com")
+
+	writeFile(t, filepath.Join(repo, "a.txt"), "a\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-m", "main user commit")
+
+	writeFile(t, filepath.Join(repo, "b.txt"), "b\n")
+	runGitWithEnv(t, repo, []string{
+		"GIT_AUTHOR_NAME=Other User",
+		"GIT_AUTHOR_EMAIL=other@example.com",
+		"GIT_COMMITTER_NAME=Other User",
+		"GIT_COMMITTER_EMAIL=other@example.com",
+	}, "add", ".")
+	runGitWithEnv(t, repo, []string{
+		"GIT_AUTHOR_NAME=Other User",
+		"GIT_AUTHOR_EMAIL=other@example.com",
+		"GIT_COMMITTER_NAME=Other User",
+		"GIT_COMMITTER_EMAIL=other@example.com",
+	}, "commit", "-m", "other user commit")
+
+	filtered, err := repoRecentCommits(repo, "7 days ago", 20, true, "Main User")
+	if err != nil {
+		t.Fatalf("repoRecentCommits author filter error: %v", err)
+	}
+	if !containsLine(filtered, "main user commit") {
+		t.Fatalf("expected main user commit in filtered log: %v", filtered)
+	}
+	if containsLine(filtered, "other user commit") {
+		t.Fatalf("did not expect other user commit in filtered log: %v", filtered)
 	}
 }
 
@@ -134,6 +185,17 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+}
+
+func runGitWithEnv(t *testing.T, dir string, env []string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))

@@ -84,9 +84,10 @@ type Model struct {
 	workspaceError  string
 	activeWorkspace string
 	// Command palette state
-	commandInput  textinput.Model
-	commandCursor int
-	commandOffset int
+	commandInput          textinput.Model
+	commandCursor         int
+	commandOffset         int
+	commandStandupAuthors []string
 	// Shortcuts overlay state
 	shortcutsCursor int
 	shortcutsOffset int
@@ -114,6 +115,9 @@ type Model struct {
 	lastActionLogLines     []string
 	lastActionSummary      string
 	actionLogsReturnState  State
+	actionLogsInput        textinput.Model
+	actionLogsAutocomplete int
+	actionLogsLastQuery    string
 	// Background watcher state
 	repoWatcher         *fswatch.RepoWatcher
 	watchPolling        bool
@@ -217,6 +221,11 @@ func NewModel(cfg *config.Config) Model {
 	ci.CharLimit = 80
 	ci.Width = 42
 
+	li := textinput.New()
+	li.Placeholder = "Filter logs (Tab autocomplete authors)"
+	li.CharLimit = 120
+	li.Width = 58
+
 	oi := textinput.New()
 	oi.Placeholder = "Search options or type :<command>..."
 	oi.CharLimit = 80
@@ -234,6 +243,7 @@ func NewModel(cfg *config.Config) Model {
 		workspaceInput:    wi,
 		gitActionInput:    ai,
 		commandInput:      ci,
+		actionLogsInput:   li,
 		openRepoInput:     oi,
 		spinner:           sp,
 		state:             StateLoading,

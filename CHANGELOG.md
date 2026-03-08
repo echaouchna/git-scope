@@ -11,10 +11,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - New `standup` command for workspace-wide multi-repo reporting.
 - Standup period selection (default `24h`) with shorthand durations like `12h`, `3d`, `2w`.
 - Standup all-branches mode (now default) with explicit `--current-branch` override.
+- Standup author filter option (`--author "<name>"`) for contributor-focused summaries.
 - TUI Command Palette entries for standup presets:
   - all-branches: `24h`, `3d`, `7d`
   - current-branch variants for the same periods
+- TUI Command Palette autocomplete entries for active standup authors (last 24h, all branches).
 - Standup summary output integrated with the existing TUI logs modal.
+- Last Action Logs modal filter input with Tab autocomplete for detected commit authors.
 - Dedicated standup tests covering period normalization, default/override parsing, and all-branches commit behavior.
 
 ### Changed
@@ -34,10 +37,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Scan/status refresh now uses bounded worker pools for faster large-workspace performance.
 - Standup collection (CLI + TUI) now runs per-repo git-log collection in parallel with bounded workers.
 - Standup output now includes improved colorized formatting in both CLI and TUI displays.
+- Standup commit lines now show commit author names in both CLI and TUI output.
+- Last Action Logs filtering now preserves repository header/context lines to keep filtered output readable.
 
 ### Fixed
 - Filesystem watcher now gracefully falls back to periodic polling when OS watcher limits are reached (for example inotify/file-descriptor limits), with user-facing remediation guidance.
 - Non-fatal errors are no longer silently swallowed for key paths (for example cache save and browser open); failures are surfaced in status messages and debug logs.
+- Last Action Logs key handling no longer closes the modal when typing `l` inside the filter input.
 
 ## [1.2.0] - 2026-03-06
 

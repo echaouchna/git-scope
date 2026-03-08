@@ -293,6 +293,12 @@ func (m Model) handlePanelDataMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 			logNonFatal("browser", msg.err.Error())
 		}
 		return m, nil, true
+	case standupAuthorsLoadedMsg:
+		if msg.err != nil {
+			logNonFatal("standup-authors", msg.err.Error())
+		}
+		m.commandStandupAuthors = msg.authors
+		return m, nil, true
 	case standupReportMsg:
 		if msg.err != nil {
 			m.statusMsg = "⚠ standup failed: " + msg.err.Error()

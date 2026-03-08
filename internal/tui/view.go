@@ -367,9 +367,10 @@ func (m Model) renderHelp() string {
 		}
 	case StateActionLogs:
 		items = []string{
+			keyBinding("type", "filter"),
 			keyBinding("↑↓", "scroll"),
 			keyBinding("pgup/dn", "page"),
-			keyBinding("l", "close"),
+			keyBinding("tab", "autocomplete"),
 			keyBinding("esc", "close"),
 		}
 	case StateOpenRepo:
@@ -740,20 +741,21 @@ func (m Model) renderActionLogsModal() string {
 		Width(modalWidth)
 
 	visible := m.actionLogsVisibleRows()
+	filteredLines := m.filteredActionLogLines()
 	start := m.gitActionLogOffset
 	if start < 0 {
 		start = 0
 	}
 	maxOffset := 0
-	if len(m.lastActionLogLines) > visible {
-		maxOffset = len(m.lastActionLogLines) - visible
+	if len(filteredLines) > visible {
+		maxOffset = len(filteredLines) - visible
 	}
 	if start > maxOffset {
 		start = maxOffset
 	}
 	end := start + visible
-	if end > len(m.lastActionLogLines) {
-		end = len(m.lastActionLogLines)
+	if end > len(filteredLines) {
+		end = len(filteredLines)
 	}
 	if start > end {
 		start = 0
@@ -763,17 +765,22 @@ func (m Model) renderActionLogsModal() string {
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Last Action Logs"),
 		"",
 		truncateString(m.lastActionSummary, logLineWidth),
+		"Filter: " + m.actionLogsInput.View(),
 		"",
 	}
-	if len(m.lastActionLogLines) == 0 {
+	if len(filteredLines) == 0 {
 		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("(no logs)"))
 	} else {
-		for _, raw := range m.lastActionLogLines[start:end] {
+		for _, raw := range filteredLines[start:end] {
 			lines = append(lines, m.renderLogLine(raw, logLineWidth))
 		}
-		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Log lines %d-%d/%d", start+1, end, len(m.lastActionLogLines))))
+		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Log lines %d-%d/%d", start+1, end, len(filteredLines))))
 	}
-	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll, PgUp/PgDn page, l/Esc close"))
+	autohint := ""
+	if cands := m.actionLogsAutocompleteCandidates(); len(cands) > 0 {
+		autohint = " | Tab autocomplete author"
+	}
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll, PgUp/PgDn page, type filter"+autohint+", Esc close"))
 	b.WriteString(modalStyle.Render(strings.Join(lines, "\n")))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderHelp())
