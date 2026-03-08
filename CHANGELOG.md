@@ -7,9 +7,37 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [1.3.0] - Unreleased
 
+### Added
+- New `standup` command for workspace-wide multi-repo reporting.
+- Standup period selection (default `24h`) with shorthand durations like `12h`, `3d`, `2w`.
+- Standup all-branches mode (now default) with explicit `--current-branch` override.
+- TUI Command Palette entries for standup presets:
+  - all-branches: `24h`, `3d`, `7d`
+  - current-branch variants for the same periods
+- Standup summary output integrated with the existing TUI logs modal.
+- Dedicated standup tests covering period normalization, default/override parsing, and all-branches commit behavior.
+
 ### Changed
 - Git Actions modal now dims the action list while a batch run is in progress to emphasize live progress state.
 - When the configured config file path is missing, git-scope now creates the config directory and writes an initial config from the sample template automatically.
+- `buildRunConfig` now relies on config auto-create behavior and no longer keeps an unreachable "missing config -> smart defaults" branch.
+- Open Project command execution now requires explicit `:<command>` opt-in when no menu option matches.
+- Open Project `:` mode now autocompletes available binaries from `PATH`.
+- Open Project command mode now includes built-in aliases with short helper descriptions.
+- Open Project shell-command execution now uses the user's default shell (`$SHELL`) instead of hardcoded `sh`.
+- Default generated config template now comments out the `roots` section and documents fallback behavior.
+- Ignore matching now uses explicit semantics and predictable defaults:
+  - default exact directory-name matching
+  - `glob:...` name matching
+  - `path:...` root-relative matching
+  - `regex:...` and `/.../` regex matching
+- Scan/status refresh now uses bounded worker pools for faster large-workspace performance.
+- Standup collection (CLI + TUI) now runs per-repo git-log collection in parallel with bounded workers.
+- Standup output now includes improved colorized formatting in both CLI and TUI displays.
+
+### Fixed
+- Filesystem watcher now gracefully falls back to periodic polling when OS watcher limits are reached (for example inotify/file-descriptor limits), with user-facing remediation guidance.
+- Non-fatal errors are no longer silently swallowed for key paths (for example cache save and browser open); failures are surfaced in status messages and debug logs.
 
 ## [1.2.0] - 2026-03-06
 
