@@ -1,11 +1,16 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/echaouchna/git-scope/internal/model"
@@ -27,6 +32,7 @@ type gitActionRepoDoneMsg struct {
 
 type gitActionRunner struct {
 	results chan gitActionRepoDoneMsg
+	cancel  context.CancelFunc
 }
 
 type gitActionRunnerStartedMsg struct {
@@ -61,6 +67,8 @@ func (m *Model) enterGitActionMode() tea.Cmd {
 	m.gitActionBranchIndex = 0
 	m.gitActionQueue = nil
 	m.gitActionExecArgs = nil
+	m.gitActionRunner = nil
+	m.gitActionCancelPending = false
 	m.gitActionScopeName = ""
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = 0
@@ -87,6 +95,8 @@ func (m *Model) exitGitActionMode() {
 	m.gitActionBranchIndex = 0
 	m.gitActionQueue = nil
 	m.gitActionExecArgs = nil
+	m.gitActionRunner = nil
+	m.gitActionCancelPending = false
 	m.gitActionScopeName = ""
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = 0
@@ -102,6 +112,8 @@ func (m *Model) resetGitActionRunState() {
 	m.gitActionRunning = false
 	m.gitActionQueue = nil
 	m.gitActionExecArgs = nil
+	m.gitActionRunner = nil
+	m.gitActionCancelPending = false
 	m.gitActionScopeName = ""
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = 0
@@ -205,53 +217,137 @@ func (m Model) gitActionArgs() ([]string, error) {
 
 func startParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
 	return func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
 		runner := &gitActionRunner{
 			results: make(chan gitActionRepoDoneMsg, len(repos)),
+			cancel:  cancel,
 		}
 		if len(repos) == 0 {
 			close(runner.results)
 			return gitActionRunnerStartedMsg{runner: runner}
 		}
 
-		type job struct {
-			repo model.Repo
-		}
-
-		workers := len(repos)
-		if workers > 8 {
-			workers = 8
-		}
-		jobs := make(chan job, len(repos))
+		jobs := make(chan model.Repo)
 		var wg sync.WaitGroup
 
+		workers := gitActionWorkerCount(len(repos))
 		for i := 0; i < workers; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				for j := range jobs {
-					cmd := exec.Command("git", gitArgs...)
-					cmd.Dir = j.repo.Path
-					out, err := cmd.CombinedOutput()
-					runner.results <- gitActionRepoDoneMsg{
-						repoName: j.repo.Name,
-						err:      err,
-						output:   strings.TrimSpace(string(out)),
+				for repo := range jobs {
+					result := runGitActionRepo(ctx, repo, gitArgs)
+					select {
+					case runner.results <- result:
+					case <-ctx.Done():
+						return
 					}
 				}
 			}()
 		}
 
-		for _, repo := range repos {
-			jobs <- job{repo: repo}
-		}
-		close(jobs)
+		go func() {
+			defer close(jobs)
+			for _, repo := range repos {
+				select {
+				case <-ctx.Done():
+					return
+				case jobs <- repo:
+				}
+			}
+		}()
+
 		go func() {
 			wg.Wait()
+			cancel()
 			close(runner.results)
 		}()
 
 		return gitActionRunnerStartedMsg{runner: runner}
 	}
+}
+
+func gitActionWorkerCount(repoCount int) int {
+	if repoCount <= 0 {
+		return 0
+	}
+	workers := runtime.GOMAXPROCS(0) * 2
+	if workers < 4 {
+		workers = 4
+	}
+	if workers > 16 {
+		workers = 16
+	}
+	if workers > repoCount {
+		workers = repoCount
+	}
+	return workers
+}
+
+func gitActionRepoTimeout(gitArgs []string) time.Duration {
+	if len(gitArgs) > 0 && gitArgs[0] == "pull" {
+		return 60 * time.Second
+	}
+	return 45 * time.Second
+}
+
+func newGitActionCommand(ctx context.Context, repoPath string, gitArgs []string) *exec.Cmd {
+	args := gitActionCommandArgs(gitArgs)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+	cmd.Env = append(
+		os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+	)
+	return cmd
+}
+
+func gitActionCommandArgs(gitArgs []string) []string {
+	// Keep a dedicated hook for future command-specific git options.
+	if len(gitArgs) > 0 && gitArgs[0] == "pull" {
+		return append([]string{}, gitArgs...)
+	}
+	return append([]string{}, gitArgs...)
+}
+
+func runGitActionRepo(parentCtx context.Context, repo model.Repo, gitArgs []string) gitActionRepoDoneMsg {
+	timeout := gitActionRepoTimeout(gitArgs)
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
+	defer cancel()
+
+	cmd := newGitActionCommand(ctx, repo.Path, gitArgs)
+	out, err := cmd.CombinedOutput()
+	result := gitActionRepoDoneMsg{
+		repoName: repo.Name,
+		err:      err,
+		output:   strings.TrimSpace(string(out)),
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		result.err = fmt.Errorf("timed out after %s", timeout)
+		if result.output == "" {
+			result.output = "git command exceeded timeout; verify network/credentials and rerun."
+		}
+	case errors.Is(err, context.Canceled):
+		result.err = fmt.Errorf("cancelled")
+		if result.output == "" {
+			result.output = "action cancelled"
+		}
+	}
+	return result
+}
+
+func (m *Model) cancelGitActionRun() bool {
+	if m.gitActionRunner != nil && m.gitActionRunner.cancel != nil {
+		m.gitActionRunner.cancel()
+	}
+	if !m.gitActionRunning {
+		return false
+	}
+	m.gitActionCancelPending = true
+	m.gitActionError = "cancel requested; stopping running git commands..."
+	m.statusMsg = "⚠ cancelling running action..."
+	return true
 }
 
 func waitGitActionProgressCmd(runner *gitActionRunner) tea.Cmd {

@@ -344,6 +344,10 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		if msg.runner == nil {
 			return m, nil, true
 		}
+		m.gitActionRunner = msg.runner
+		if m.gitActionCancelPending {
+			m.cancelGitActionRun()
+		}
 		return m, waitGitActionProgressCmd(msg.runner), true
 	case gitActionRepoProgressMsg:
 		m.applyGitActionRepoResult(msg.result)
@@ -352,6 +356,7 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		return m, waitGitActionProgressCmd(msg.runner), true
 	case gitActionRunnerDoneMsg:
+		m.gitActionRunner = nil
 		m.finishGitActionRun()
 		return m, nil, true
 	default:
@@ -384,6 +389,15 @@ func (m *Model) applyGitActionRepoResult(result gitActionRepoDoneMsg) {
 
 func (m *Model) finishGitActionRun() {
 	m.gitActionRunning = false
+	m.gitActionRunner = nil
+	cancelled := m.gitActionCancelPending
+	m.gitActionCancelPending = false
+	if cancelled {
+		m.statusMsg = fmt.Sprintf("⚠ %s cancelled: %d ok, %d failed [%s]", m.gitActionName(), m.gitActionSuccess, m.gitActionFailed, m.gitActionScopeName)
+		m.lastActionSummary = m.statusMsg
+		m.lastActionLogLines = append([]string{}, m.gitActionLogLines...)
+		return
+	}
 	if m.gitActionFailed == 0 {
 		m.statusMsg = fmt.Sprintf("✓ %s completed on %d repo(s) [%s]", m.gitActionName(), m.gitActionSuccess, m.gitActionScopeName)
 	} else {
@@ -779,6 +793,10 @@ func (m Model) handleGitActionRunningState(key string) (tea.Model, tea.Cmd, bool
 	if !m.gitActionRunning {
 		return m, nil, false
 	}
+	if key == "esc" {
+		m.cancelGitActionRun()
+		return m, nil, true
+	}
 	if key == "ctrl+c" || key == "q" {
 		return m, tea.Quit, true
 	}
@@ -873,6 +891,8 @@ func (m Model) startGitActionRun(finished bool) (tea.Model, tea.Cmd) {
 	m.gitActionError = ""
 	m.gitActionQueue = repos
 	m.gitActionExecArgs = gitArgs
+	m.gitActionRunner = nil
+	m.gitActionCancelPending = false
 	m.gitActionScopeName = source
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = len(repos)
@@ -883,9 +903,10 @@ func (m Model) startGitActionRun(finished bool) (tea.Model, tea.Cmd) {
 	m.gitActionLogOffset = 0
 	m.gitActionCurrentRepo = fmt.Sprintf("%d repos in parallel", len(repos))
 	m.statusMsg = fmt.Sprintf(
-		"Running %s on %d repo(s) in parallel",
+		"Running %s on %d repo(s) in parallel (%d workers)",
 		m.gitActionName(),
 		m.gitActionProgressTotal,
+		gitActionWorkerCount(m.gitActionProgressTotal),
 	)
 	return m, tea.Batch(startParallelGitActionCmd(repos, gitArgs), m.spinner.Tick)
 }

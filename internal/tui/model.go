@@ -103,6 +103,8 @@ type Model struct {
 	gitActionBranchIndex   int
 	gitActionQueue         []model.Repo
 	gitActionExecArgs      []string
+	gitActionRunner        *gitActionRunner
+	gitActionCancelPending bool
 	gitActionScopeName     string
 	gitActionProgressIdx   int
 	gitActionProgressTotal int

@@ -39,11 +39,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Standup output now includes improved colorized formatting in both CLI and TUI displays.
 - Standup commit lines now show commit author names in both CLI and TUI output.
 - Last Action Logs filtering now preserves repository header/context lines to keep filtered output readable.
+- Git Actions parallel execution now uses dynamic bounded worker sizing for faster large-batch runs.
 
 ### Fixed
 - Filesystem watcher now gracefully falls back to periodic polling when OS watcher limits are reached (for example inotify/file-descriptor limits), with user-facing remediation guidance.
 - Non-fatal errors are no longer silently swallowed for key paths (for example cache save and browser open); failures are surfaced in status messages and debug logs.
 - Last Action Logs key handling no longer closes the modal when typing `l` inside the filter input.
+- Git Actions runs no longer hang indefinitely on interactive credential/network waits: commands now run non-interactively, support cancel on `Esc`, and enforce per-repo timeouts.
 
 ## [1.2.0] - 2026-03-06
 
