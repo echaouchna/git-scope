@@ -801,7 +801,7 @@ func (m Model) renderActionLogsModal() string {
 
 func (m Model) actionLogsTitle() string {
 	if m.actionLogsLive && m.gitActionRunning {
-		return "Action Logs (Live)"
+		return m.spinner.View() + " Action Logs (Live)"
 	}
 	return "Last Action Logs"
 }

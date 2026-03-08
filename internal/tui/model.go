@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
@@ -92,36 +93,39 @@ type Model struct {
 	shortcutsCursor int
 	shortcutsOffset int
 	// Git action modal state
-	gitActionInput         textinput.Model
-	gitActionType          GitActionType
-	gitActionCursor        int
-	gitActionError         string
-	gitActionRunning       bool
-	gitActionLoadingBranch bool
-	gitActionBranchOptions []string
-	gitActionBranchMatches []string
-	gitActionBranchIndex   int
-	gitActionQueue         []model.Repo
-	gitActionExecArgs      []string
-	gitActionRunner        *gitActionRunner
-	gitActionCancelPending bool
-	gitActionScopeName     string
-	gitActionProgressIdx   int
-	gitActionProgressTotal int
-	gitActionCurrentRepo   string
-	gitActionSuccess       int
-	gitActionFailed        int
-	gitActionFirstError    string
-	gitActionLogLines      []string
-	gitActionLogOffset     int
-	lastActionLogLines     []string
-	lastActionSummary      string
-	actionLogsReturnState  State
-	actionLogsInput        textinput.Model
-	actionLogsAutocomplete int
-	actionLogsLastQuery    string
-	actionLogsLive         bool
-	actionLogsAutoFollow   bool
+	gitActionInput          textinput.Model
+	gitActionType           GitActionType
+	gitActionCursor         int
+	gitActionError          string
+	gitActionRunning        bool
+	gitActionLoadingBranch  bool
+	gitActionBranchOptions  []string
+	gitActionBranchMatches  []string
+	gitActionBranchIndex    int
+	gitActionQueue          []model.Repo
+	gitActionExecArgs       []string
+	gitActionRunner         *gitActionRunner
+	gitActionCancelPending  bool
+	gitActionScopeName      string
+	gitActionProgressIdx    int
+	gitActionProgressTotal  int
+	gitActionCurrentRepo    string
+	gitActionStartedAt      time.Time
+	gitActionLastProgressAt time.Time
+	gitActionRepoTimeout    time.Duration
+	gitActionSuccess        int
+	gitActionFailed         int
+	gitActionFirstError     string
+	gitActionLogLines       []string
+	gitActionLogOffset      int
+	lastActionLogLines      []string
+	lastActionSummary       string
+	actionLogsReturnState   State
+	actionLogsInput         textinput.Model
+	actionLogsAutocomplete  int
+	actionLogsLastQuery     string
+	actionLogsLive          bool
+	actionLogsAutoFollow    bool
 	// Background watcher state
 	repoWatcher         *fswatch.RepoWatcher
 	watchPolling        bool

@@ -49,6 +49,11 @@ type gitActionRunnerDoneMsg struct {
 	runner *gitActionRunner
 }
 
+type gitActionRunnerHeartbeatMsg struct {
+	runner *gitActionRunner
+	at     time.Time
+}
+
 type commonBranchesLoadedMsg struct {
 	branches []string
 	err      error
@@ -74,6 +79,9 @@ func (m *Model) enterGitActionMode() tea.Cmd {
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = 0
 	m.gitActionCurrentRepo = ""
+	m.gitActionStartedAt = time.Time{}
+	m.gitActionLastProgressAt = time.Time{}
+	m.gitActionRepoTimeout = 0
 	m.gitActionSuccess = 0
 	m.gitActionFailed = 0
 	m.gitActionFirstError = ""
@@ -102,6 +110,9 @@ func (m *Model) exitGitActionMode() {
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = 0
 	m.gitActionCurrentRepo = ""
+	m.gitActionStartedAt = time.Time{}
+	m.gitActionLastProgressAt = time.Time{}
+	m.gitActionRepoTimeout = 0
 	m.gitActionSuccess = 0
 	m.gitActionFailed = 0
 	m.gitActionFirstError = ""
@@ -119,6 +130,9 @@ func (m *Model) resetGitActionRunState() {
 	m.gitActionProgressIdx = 0
 	m.gitActionProgressTotal = 0
 	m.gitActionCurrentRepo = ""
+	m.gitActionStartedAt = time.Time{}
+	m.gitActionLastProgressAt = time.Time{}
+	m.gitActionRepoTimeout = 0
 	m.gitActionSuccess = 0
 	m.gitActionFailed = 0
 	m.gitActionFirstError = ""
@@ -335,8 +349,11 @@ func runGitActionRepo(parentCtx context.Context, repo model.Repo, gitArgs []stri
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		result.err = fmt.Errorf("timed out after %s", timeout)
+		timeoutMsg := "git command exceeded timeout; verify network/credentials and rerun."
 		if result.output == "" {
-			result.output = "git command exceeded timeout; verify network/credentials and rerun."
+			result.output = timeoutMsg
+		} else {
+			result.output = result.output + "\n" + timeoutMsg
 		}
 	case errors.Is(err, context.Canceled):
 		result.err = fmt.Errorf("cancelled")
@@ -362,13 +379,17 @@ func (m *Model) cancelGitActionRun() bool {
 
 func waitGitActionProgressCmd(runner *gitActionRunner) tea.Cmd {
 	return func() tea.Msg {
-		result, ok := <-runner.results
-		if !ok {
-			return gitActionRunnerDoneMsg{runner: runner}
-		}
-		return gitActionRepoProgressMsg{
-			runner: runner,
-			result: result,
+		select {
+		case result, ok := <-runner.results:
+			if !ok {
+				return gitActionRunnerDoneMsg{runner: runner}
+			}
+			return gitActionRepoProgressMsg{
+				runner: runner,
+				result: result,
+			}
+		case <-time.After(1 * time.Second):
+			return gitActionRunnerHeartbeatMsg{runner: runner, at: time.Now()}
 		}
 	}
 }

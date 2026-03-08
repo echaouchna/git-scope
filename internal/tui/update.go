@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -69,7 +70,8 @@ func (m Model) handleWindowAndSpinnerMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		m.resizeTable()
 		return m, nil, true
 	case spinner.TickMsg:
-		if m.state != StateLoading && (m.state != StateGitAction || !m.gitActionRunning) {
+		liveActionLogs := m.state == StateActionLogs && m.actionLogsLive && m.gitActionRunning
+		if m.state != StateLoading && (m.state != StateGitAction || !m.gitActionRunning) && !liveActionLogs {
 			return m, nil, true
 		}
 		var cmd tea.Cmd
@@ -355,6 +357,14 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		return m, waitGitActionProgressCmd(msg.runner), true
+	case gitActionRunnerHeartbeatMsg:
+		if msg.runner == nil {
+			return m, nil, true
+		}
+		if m.gitActionRunning && m.gitActionRunner == msg.runner {
+			m.handleGitActionHeartbeat(msg.at)
+		}
+		return m, waitGitActionProgressCmd(msg.runner), true
 	case gitActionRunnerDoneMsg:
 		m.gitActionRunner = nil
 		m.finishGitActionRun()
@@ -365,9 +375,11 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 }
 
 func (m *Model) applyGitActionRepoResult(result gitActionRepoDoneMsg) {
+	m.gitActionLastProgressAt = time.Now()
 	if result.started {
 		m.gitActionCurrentRepo = result.repoName
 		m.gitActionLogLines = append(m.gitActionLogLines, fmt.Sprintf("[%s] RUNNING", result.repoName))
+		m.updateLiveGitActionStatus()
 		if m.state == StateActionLogs && m.actionLogsLive && m.actionLogsAutoFollow {
 			m.setActionLogsOffsetToBottom()
 		}
@@ -393,9 +405,60 @@ func (m *Model) applyGitActionRepoResult(result gitActionRepoDoneMsg) {
 			}
 		}
 	}
+	m.updateLiveGitActionStatus()
 	if m.state == StateActionLogs && m.actionLogsLive && m.actionLogsAutoFollow {
 		m.setActionLogsOffsetToBottom()
 	}
+}
+
+func (m *Model) handleGitActionHeartbeat(now time.Time) {
+	if m.gitActionStartedAt.IsZero() {
+		m.gitActionStartedAt = now
+	}
+	last := m.gitActionLastProgressAt
+	if last.IsZero() {
+		last = m.gitActionStartedAt
+	}
+	elapsed := now.Sub(m.gitActionStartedAt).Round(time.Second)
+	idle := now.Sub(last)
+	idleRounded := idle.Round(time.Second)
+	limit := m.gitActionRepoTimeout + 20*time.Second
+	if m.gitActionRepoTimeout <= 0 {
+		limit = 80 * time.Second
+	}
+	if idle > limit && !m.gitActionCancelPending {
+		warn := fmt.Sprintf("[watchdog] no progress for %s (timeout %s) - cancelling batch", idleRounded, m.gitActionRepoTimeout)
+		m.gitActionLogLines = append(m.gitActionLogLines, warn)
+		m.cancelGitActionRun()
+	}
+	m.statusMsg = fmt.Sprintf(
+		"Running %s on %d repo(s): %d/%d done, %d ok, %d failed (current: %s, elapsed: %s, idle: %s)",
+		m.gitActionName(),
+		m.gitActionProgressTotal,
+		m.gitActionProgressIdx,
+		m.gitActionProgressTotal,
+		m.gitActionSuccess,
+		m.gitActionFailed,
+		m.gitActionCurrentRepo,
+		elapsed,
+		idleRounded,
+	)
+}
+
+func (m *Model) updateLiveGitActionStatus() {
+	if !m.gitActionRunning {
+		return
+	}
+	m.statusMsg = fmt.Sprintf(
+		"Running %s on %d repo(s): %d/%d done, %d ok, %d failed (current: %s)",
+		m.gitActionName(),
+		m.gitActionProgressTotal,
+		m.gitActionProgressIdx,
+		m.gitActionProgressTotal,
+		m.gitActionSuccess,
+		m.gitActionFailed,
+		m.gitActionCurrentRepo,
+	)
 }
 
 func (m *Model) finishGitActionRun() {
@@ -409,6 +472,9 @@ func (m *Model) finishGitActionRun() {
 		m.lastActionLogLines = append([]string{}, m.gitActionLogLines...)
 		m.actionLogsLive = false
 		m.actionLogsAutoFollow = false
+		m.gitActionStartedAt = time.Time{}
+		m.gitActionLastProgressAt = time.Time{}
+		m.gitActionRepoTimeout = 0
 		return
 	}
 	if m.gitActionFailed == 0 {
@@ -423,6 +489,9 @@ func (m *Model) finishGitActionRun() {
 	m.lastActionLogLines = append([]string{}, m.gitActionLogLines...)
 	m.actionLogsLive = false
 	m.actionLogsAutoFollow = false
+	m.gitActionStartedAt = time.Time{}
+	m.gitActionLastProgressAt = time.Time{}
+	m.gitActionRepoTimeout = 0
 }
 
 func (m Model) handleStateModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
@@ -921,6 +990,10 @@ func (m Model) startGitActionRun(finished bool) (tea.Model, tea.Cmd) {
 	m.gitActionLogLines = nil
 	m.gitActionLogOffset = 0
 	m.gitActionCurrentRepo = fmt.Sprintf("%d repos in parallel", len(repos))
+	now := time.Now()
+	m.gitActionStartedAt = now
+	m.gitActionLastProgressAt = now
+	m.gitActionRepoTimeout = gitActionRepoTimeout(gitArgs)
 	m.statusMsg = fmt.Sprintf(
 		"Running %s on %d repo(s) in parallel (%d workers)",
 		m.gitActionName(),
