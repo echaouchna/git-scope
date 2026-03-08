@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/echaouchna/git-scope/internal/browser"
+	"github.com/echaouchna/git-scope/internal/fswatch"
 	"github.com/echaouchna/git-scope/internal/model"
 	"github.com/echaouchna/git-scope/internal/nudge"
 	"github.com/echaouchna/git-scope/internal/scan"
@@ -162,12 +163,32 @@ func (m Model) handleWatcherMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 	case repoWatcherStartedMsg:
 		m.stopRepoWatcher()
 		m.repoWatcher = msg.watcher
+		m.watchPolling = false
 		m.watchRefreshPending = false
 		m.watchRefreshRunning = false
 		if m.repoWatcher == nil {
 			return m, nil, true
 		}
 		return m, waitRepoWatchEventCmd(m.repoWatcher), true
+	case repoWatchFallbackMsg:
+		m.stopRepoWatcher()
+		m.watchPolling = true
+		m.watchRefreshPending = false
+		m.watchRefreshRunning = false
+		m.statusMsg = watcherFallbackMessage(msg.err)
+		return m, startRepoPollTickCmd(), true
+	case repoPollTickMsg:
+		if !m.watchPolling || len(m.repos) == 0 {
+			return m, nil, true
+		}
+		cmds := []tea.Cmd{startRepoPollTickCmd()}
+		if !m.watchRefreshRunning {
+			m.watchRefreshRunning = true
+			cmds = append(cmds, refreshRepoStatusesCmd(cloneRepos(m.repos)))
+		} else {
+			m.watchRefreshPending = true
+		}
+		return m, tea.Batch(cmds...), true
 	case repoWatchEventMsg:
 		if m.repoWatcher == nil {
 			return m, nil, true
@@ -192,6 +213,14 @@ func (m Model) handleWatcherMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		return m, nil, true
 	case repoWatchErrorMsg:
+		if fswatch.IsResourceLimitError(msg.err) {
+			m.stopRepoWatcher()
+			m.watchPolling = true
+			m.watchRefreshPending = false
+			m.watchRefreshRunning = false
+			m.statusMsg = watcherFallbackMessage(msg.err)
+			return m, startRepoPollTickCmd(), true
+		}
 		m.stopRepoWatcher()
 		m.statusMsg = "⚠ background watcher stopped: " + msg.err.Error()
 		return m, nil, true
@@ -876,10 +905,20 @@ func cloneRepos(repos []model.Repo) []model.Repo {
 
 func (m *Model) stopRepoWatcher() {
 	if m.repoWatcher == nil {
+		m.watchPolling = false
+		m.watchRefreshRunning = false
+		m.watchRefreshPending = false
 		return
 	}
 	_ = m.repoWatcher.Close()
 	m.repoWatcher = nil
+	m.watchPolling = false
 	m.watchRefreshRunning = false
 	m.watchRefreshPending = false
+}
+
+func watcherFallbackMessage(err error) string {
+	return "⚠ file watcher hit OS limits; switched to polling every 5s. " +
+		"Tip: increase inotify/FD limits (fs.inotify.max_user_watches, ulimit -n) or narrow roots/ignore dirs. Cause: " +
+		err.Error()
 }

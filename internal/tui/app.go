@@ -13,6 +13,7 @@ import (
 
 // Cache max age - use cached data if less than 5 minutes old
 const cacheMaxAge = 5 * time.Minute
+const repoPollInterval = 5 * time.Second
 
 // Run starts the Bubbletea TUI application
 func Run(cfg *config.Config) error {
@@ -76,6 +77,12 @@ type repoWatchErrorMsg struct {
 	err error
 }
 
+type repoWatchFallbackMsg struct {
+	err error
+}
+
+type repoPollTickMsg struct{}
+
 type repoStatusRefreshMsg struct {
 	repos []model.Repo
 }
@@ -84,6 +91,9 @@ func startRepoWatcherCmd(repos []model.Repo, ignore []string) tea.Cmd {
 	return func() tea.Msg {
 		watcher, err := fswatch.NewRepoWatcher(repos, ignore)
 		if err != nil {
+			if fswatch.IsResourceLimitError(err) {
+				return repoWatchFallbackMsg{err: err}
+			}
 			return repoWatchErrorMsg{err: err}
 		}
 		return repoWatcherStartedMsg{watcher: watcher}
@@ -106,6 +116,12 @@ func refreshRepoStatusesCmd(repos []model.Repo) tea.Cmd {
 	return func() tea.Msg {
 		return repoStatusRefreshMsg{repos: scan.RefreshStatuses(repos)}
 	}
+}
+
+func startRepoPollTickCmd() tea.Cmd {
+	return tea.Tick(repoPollInterval, func(time.Time) tea.Msg {
+		return repoPollTickMsg{}
+	})
 }
 
 // openEditorMsg is sent to trigger opening an editor

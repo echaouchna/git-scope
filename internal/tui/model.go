@@ -116,6 +116,7 @@ type Model struct {
 	actionLogsReturnState  State
 	// Background watcher state
 	repoWatcher         *fswatch.RepoWatcher
+	watchPolling        bool
 	watchRefreshRunning bool
 	watchRefreshPending bool
 	// Open repo modal state

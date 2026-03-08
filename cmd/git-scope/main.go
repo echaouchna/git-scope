@@ -176,8 +176,6 @@ func buildRunConfig(cmd string, args []string, configPath string) (*config.Confi
 
 	if len(dirs) > 0 {
 		cfg.Roots = expandDirs(dirs)
-	} else if !config.ConfigExists(configPath) {
-		cfg.Roots = getSmartDefaults()
 	}
 
 	return cfg, branchArg, nil

@@ -1,9 +1,12 @@
 package fswatch
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/echaouchna/git-scope/internal/model"
 	"github.com/fsnotify/fsnotify"
@@ -168,4 +171,18 @@ func (rw *RepoWatcher) addDir(path string) error {
 		return err
 	}
 	return nil
+}
+
+// IsResourceLimitError reports whether an error likely indicates OS watcher limits.
+func IsResourceLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) || errors.Is(err, syscall.ENOSPC) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "too many open files") ||
+		strings.Contains(msg, "no space left on device") ||
+		strings.Contains(msg, "user limit")
 }
