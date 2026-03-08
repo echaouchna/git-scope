@@ -11,6 +11,7 @@ func TestParseCommand(t *testing.T) {
 	}{
 		{name: "empty args", args: nil, wantCmd: "", wantArg: nil},
 		{name: "scan command", args: []string{"scan", "."}, wantCmd: "scan", wantArg: []string{"."}},
+		{name: "standup command", args: []string{"standup"}, wantCmd: "standup", wantArg: []string{}},
 		{name: "help command", args: []string{"help"}, wantCmd: "help", wantArg: []string{}},
 		{name: "unknown defaults to tui", args: []string{"/tmp"}, wantCmd: "tui", wantArg: []string{"/tmp"}},
 	}

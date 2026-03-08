@@ -8,12 +8,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/echaouchna/git-scope/internal/app"
 	"github.com/echaouchna/git-scope/internal/browser"
 	"github.com/echaouchna/git-scope/internal/config"
+	"github.com/echaouchna/git-scope/internal/model"
 	"github.com/echaouchna/git-scope/internal/scan"
 	"github.com/echaouchna/git-scope/internal/tui"
 )
@@ -22,6 +27,11 @@ type options struct {
 	ConfigPath  string
 	ShowVersion bool
 	ShowHelp    bool
+}
+
+type standupOptions struct {
+	Since       string
+	AllBranches bool
 }
 
 func usage() {
@@ -34,6 +44,7 @@ Commands:
   (default)   Launch TUI dashboard
   scan        Scan and print repos (JSON)
   scan-all    Full system scan from home directory (with stats)
+  standup     Multi-repo standup summary (default period: 24h, all branches)
   pull-rebase Run 'git pull --rebase' in all discovered repos
   switch      Run 'git switch <branch>' in all discovered repos
   create-branch Run 'git switch -c <branch>' in all discovered repos
@@ -47,6 +58,10 @@ Examples:
   git-scope ~/code ~/work      # Scan specific directories
   git-scope scan .             # Scan current directory (JSON)
   git-scope scan-all           # Find ALL repos on your system
+  git-scope standup            # Print multi-repo standup summary (24h, all branches)
+  git-scope standup 3d         # Last 3 days
+  git-scope standup 3d --current-branch # Limit commits to current branch only
+  git-scope standup 12h ~/code # Last 12 hours for specific roots
   git-scope pull-rebase        # Pull --rebase across repos
   git-scope switch main        # Switch branch across repos
   git-scope create-branch feat/abc ~/code
@@ -121,7 +136,7 @@ func parseCommand(args []string) (cmd string, cmdArgs []string) {
 	}
 
 	switch args[0] {
-	case "scan", "tui", "help", "init", "scan-all", "issue", "pull-rebase", "switch", "create-branch", "merge-no-ff":
+	case "scan", "tui", "help", "init", "scan-all", "issue", "standup", "pull-rebase", "switch", "create-branch", "merge-no-ff":
 		return args[0], args[1:]
 	default:
 		return "tui", args // assume it's a directory
@@ -135,11 +150,11 @@ func run(cmd string, args []string, configPath string) error {
 		return err
 	}
 
-	cfg, branchArg, err := buildRunConfig(cmd, args, configPath)
+	cfg, branchArg, standupOpts, err := buildRunConfig(cmd, args, configPath)
 	if err != nil {
 		return err
 	}
-	return runWithConfig(cmd, cfg, branchArg)
+	return runWithConfig(cmd, cfg, branchArg, standupOpts)
 }
 
 func runNoConfigCommand(cmd string) (bool, error) {
@@ -158,34 +173,53 @@ func runNoConfigCommand(cmd string) (bool, error) {
 	}
 }
 
-func buildRunConfig(cmd string, args []string, configPath string) (*config.Config, string, error) {
+func buildRunConfig(cmd string, args []string, configPath string) (*config.Config, string, standupOptions, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load config: %w", err)
+		return nil, "", standupOptions{}, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	dirs := args
 	branchArg := ""
+	standupOpts := standupOptions{Since: "24h", AllBranches: true}
 	if needsBranchArg(cmd) {
 		if len(args) < 1 {
-			return nil, "", fmt.Errorf("%s requires a branch argument", cmd)
+			return nil, "", standupOptions{}, fmt.Errorf("%s requires a branch argument", cmd)
 		}
 		branchArg = args[0]
 		dirs = args[1:]
+	} else if cmd == "standup" {
+		dirs = nil
+		remaining := make([]string, 0, len(args))
+		for _, arg := range args {
+			if arg == "--all-branches" {
+				standupOpts.AllBranches = true
+				continue
+			}
+			if arg == "--current-branch" {
+				standupOpts.AllBranches = false
+				continue
+			}
+			remaining = append(remaining, arg)
+		}
+		if len(remaining) >= 1 {
+			standupOpts.Since = remaining[0]
+			dirs = remaining[1:]
+		}
 	}
 
 	if len(dirs) > 0 {
 		cfg.Roots = expandDirs(dirs)
 	}
 
-	return cfg, branchArg, nil
+	return cfg, branchArg, standupOpts, nil
 }
 
 func needsBranchArg(cmd string) bool {
 	return cmd == "switch" || cmd == "create-branch" || cmd == "merge-no-ff"
 }
 
-func runWithConfig(cmd string, cfg *config.Config, branchArg string) error {
+func runWithConfig(cmd string, cfg *config.Config, branchArg string, standupOpts standupOptions) error {
 	switch cmd {
 	case "scan":
 		repos, err := scan.ScanRoots(cfg.Roots, cfg.Ignore)
@@ -209,10 +243,181 @@ func runWithConfig(cmd string, cfg *config.Config, branchArg string) error {
 		return runBatchGitAction(cfg, []string{"switch", "-c", branchArg})
 	case "merge-no-ff":
 		return runBatchGitAction(cfg, []string{"merge", "--no-ff", branchArg})
+	case "standup":
+		return runStandup(cfg, standupOpts)
 	default:
 		usage()
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
+}
+
+func runStandup(cfg *config.Config, opts standupOptions) error {
+	repos, err := scan.ScanRoots(cfg.Roots, cfg.Ignore)
+	if err != nil {
+		return fmt.Errorf("scan error: %w", err)
+	}
+	if len(repos) == 0 {
+		fmt.Println("No repositories found.")
+		return nil
+	}
+
+	sort.Slice(repos, func(i, j int) bool {
+		return repos[i].Path < repos[j].Path
+	})
+
+	sinceArg := normalizeSinceArg(opts.Since)
+	scope := "current branch"
+	if opts.AllBranches {
+		scope = "all branches"
+	}
+	fmt.Printf("%s\n\n", standupColorize("1;36", fmt.Sprintf("Standup (%s, %s) — %s", opts.Since, scope, time.Now().Format("2006-01-02"))))
+
+	updated := 0
+	results := collectStandupRepoResults(repos, sinceArg, 5, opts.AllBranches)
+	for _, result := range results {
+		if len(result.commits) == 0 && !result.repo.Status.IsDirty && result.logErr == nil {
+			continue
+		}
+		updated++
+		printStandupRepo(result.repo, result.commits, result.logErr)
+	}
+
+	if updated == 0 {
+		fmt.Println("No changes in discovered repositories for the selected period.")
+		return nil
+	}
+
+	fmt.Printf("%s\n", standupColorize("1;32", fmt.Sprintf("Summary: %d/%d repos have recent activity", updated, len(repos))))
+	return nil
+}
+
+type standupRepoResult struct {
+	repo    model.Repo
+	commits []string
+	logErr  error
+}
+
+func collectStandupRepoResults(repos []model.Repo, since string, limit int, allBranches bool) []standupRepoResult {
+	type task struct {
+		idx  int
+		repo model.Repo
+	}
+
+	results := make([]standupRepoResult, len(repos))
+	if len(repos) == 0 {
+		return results
+	}
+
+	workerCount := runtime.NumCPU()
+	if workerCount < 4 {
+		workerCount = 4
+	}
+	if workerCount > 24 {
+		workerCount = 24
+	}
+	if workerCount > len(repos) {
+		workerCount = len(repos)
+	}
+
+	tasks := make(chan task, workerCount)
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer wg.Done()
+			for t := range tasks {
+				commits, err := repoRecentCommits(t.repo.Path, since, limit, allBranches)
+				results[t.idx] = standupRepoResult{
+					repo:    t.repo,
+					commits: commits,
+					logErr:  err,
+				}
+			}
+		}()
+	}
+
+	for i, repo := range repos {
+		tasks <- task{idx: i, repo: repo}
+	}
+	close(tasks)
+	wg.Wait()
+	return results
+}
+
+func normalizeSinceArg(input string) string {
+	value := strings.TrimSpace(strings.ToLower(input))
+	if value == "" {
+		return "24 hours ago"
+	}
+
+	unit := value[len(value)-1]
+	n, err := strconv.Atoi(value[:len(value)-1])
+	if err == nil && n > 0 {
+		switch unit {
+		case 'h':
+			return fmt.Sprintf("%d hours ago", n)
+		case 'd':
+			return fmt.Sprintf("%d days ago", n)
+		case 'w':
+			return fmt.Sprintf("%d weeks ago", n)
+		}
+	}
+	return input
+}
+
+func repoRecentCommits(repoPath, since string, limit int, allBranches bool) ([]string, error) {
+	args := []string{"log", "--since=" + since}
+	if allBranches {
+		args = append(args, "--all")
+	}
+	args = append(args, "--pretty=format:%h %s", fmt.Sprintf("-%d", limit))
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("%v (%s)", err, strings.TrimSpace(string(out)))
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	commits := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			commits = append(commits, line)
+		}
+	}
+	return commits, nil
+}
+
+func printStandupRepo(repo model.Repo, commits []string, logErr error) {
+	fmt.Printf("%s\n", standupColorize("1;35", fmt.Sprintf("• %s", repo.Name)))
+	fmt.Printf("  %s\n", standupColorize("2;37", repo.Path))
+	if repo.Status.Branch != "" {
+		fmt.Printf("  %s", standupColorize("36", "branch: "+repo.Status.Branch))
+		if repo.Status.Ahead > 0 || repo.Status.Behind > 0 {
+			fmt.Printf("  %s", standupColorize("34", fmt.Sprintf("[ahead:%d behind:%d]", repo.Status.Ahead, repo.Status.Behind)))
+		}
+		fmt.Println()
+	}
+	if repo.Status.IsDirty {
+		fmt.Printf("  %s\n", standupColorize("33", fmt.Sprintf("dirty: staged=%d modified=%d untracked=%d", repo.Status.Staged, repo.Status.Unstaged, repo.Status.Untracked)))
+	}
+	if len(commits) > 0 {
+		fmt.Printf("  %s\n", standupColorize("32", "commits:"))
+		for _, c := range commits {
+			fmt.Printf("    %s %s\n", standupColorize("32", "+"), c)
+		}
+	}
+	if logErr != nil {
+		fmt.Printf("  %s\n", standupColorize("31", fmt.Sprintf("warning: failed to read git log: %v", logErr)))
+	}
+	fmt.Println()
+}
+
+func standupColorize(code, value string) string {
+	if strings.TrimSpace(os.Getenv("NO_COLOR")) != "" {
+		return value
+	}
+	return "\x1b[" + code + "m" + value + "\x1b[0m"
 }
 
 func runBatchGitAction(cfg *config.Config, gitArgs []string) error {

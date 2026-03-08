@@ -59,6 +59,9 @@ git-scope              # Launch TUI dashboard
 git-scope init         # Create config file interactively
 git-scope scan         # Scan and print repos (JSON)
 git-scope scan-all     # Full system scan from home directory
+git-scope standup      # Multi-repo standup summary (default: 24h, all branches)
+git-scope standup 3d   # Multi-repo standup for last 3 days
+git-scope standup 3d --current-branch # Limit commits to current branch only
 git-scope pull-rebase  # Run git pull --rebase in all discovered repos
 git-scope switch main  # Run git switch main in all discovered repos
 git-scope create-branch feat/x # Run git switch -c feat/x in all discovered repos
@@ -181,6 +184,8 @@ Notes:
 - `regex:^tmp-` or `/^tmp-/` -> regular expression match.
 - Invalid regex rules are ignored safely.
 - Open-project tools (Neovim, GitUI, Tig) appear only if installed on your machine.
+- `standup` checks recent commits across all local branches by default; add `--current-branch` to limit to current branch only.
+- Use `Ctrl+P` (Command Palette) and run `Standup (..., all branches)` by default, or choose `current branch` variants.
 - In the open-project menu: type to filter options, use `↑/↓` and `PgUp/PgDn` to scroll, `Enter` to run.
 
 -----
@@ -224,7 +229,7 @@ Yes. git-scope runs entirely locally, has no telemetry, and dashboard mode is re
 
 ### Does git-scope replace git commands?
 
-Not entirely. The TUI focuses on visibility and orientation, and there are optional batch commands for `pull --rebase`, `switch`, `create-branch`, and `merge --no-ff`.
+Not entirely. The TUI focuses on visibility and orientation, and there are optional batch commands for `standup`, `pull --rebase`, `switch`, `create-branch`, and `merge --no-ff`.
 
 ### Is git-scope suitable for monorepos?
 

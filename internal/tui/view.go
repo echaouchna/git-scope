@@ -787,6 +787,16 @@ func (m Model) renderLogLine(line string, maxWidth int) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true).Render(trimmed)
 	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "] ERROR"):
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Bold(true).Render(trimmed)
+	case strings.HasPrefix(trimmed, "[") && strings.Contains(trimmed, "] "):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#60A5FA")).Bold(true).Render(trimmed)
+	case strings.HasPrefix(trimmed, "  branch:"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22D3EE")).Render(trimmed)
+	case strings.HasPrefix(trimmed, "  dirty:"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render(trimmed)
+	case strings.HasPrefix(trimmed, "  warning:"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render(trimmed)
+	case strings.HasPrefix(trimmed, "  commits:"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true).Render(trimmed)
 	case strings.HasPrefix(trimmed, "  +"), strings.HasPrefix(trimmed, "+"):
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Render(trimmed)
 	case strings.HasPrefix(trimmed, "  -"), strings.HasPrefix(trimmed, "-"):

@@ -51,6 +51,12 @@ func (m Model) commandPaletteItems() []commandItem {
 		{label: "Select/deselect all filtered", key: "select_all"},
 		{label: "Open selected repo menu", key: "open_repo"},
 		{label: "Switch workspace", key: "workspace"},
+		{label: "Standup (24h, all branches)", key: "standup_24h"},
+		{label: "Standup (3d, all branches)", key: "standup_3d"},
+		{label: "Standup (7d, all branches)", key: "standup_7d"},
+		{label: "Standup (24h, current branch)", key: "standup_24h_current"},
+		{label: "Standup (3d, current branch)", key: "standup_3d_current"},
+		{label: "Standup (7d, current branch)", key: "standup_7d_current"},
 		{label: "Show shortcuts", key: "shortcuts"},
 		{label: "Show last action logs", key: "action_logs"},
 		{label: "Quit", key: "quit"},
@@ -212,6 +218,18 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 	case "shortcuts":
 		m.enterShortcutsMode()
 		return m, nil
+	case "standup_24h":
+		return m.runStandupFromPalette("24h", true)
+	case "standup_3d":
+		return m.runStandupFromPalette("3d", true)
+	case "standup_7d":
+		return m.runStandupFromPalette("7d", true)
+	case "standup_24h_current":
+		return m.runStandupFromPalette("24h", false)
+	case "standup_3d_current":
+		return m.runStandupFromPalette("3d", false)
+	case "standup_7d_current":
+		return m.runStandupFromPalette("7d", false)
 	case "quit":
 		return m, tea.Quit
 	case "action_logs":
@@ -224,6 +242,19 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 	default:
 		return m, nil
 	}
+}
+
+func (m Model) runStandupFromPalette(since string, allBranches bool) (tea.Model, tea.Cmd) {
+	if len(m.repos) == 0 {
+		m.statusMsg = "No repositories loaded"
+		return m, nil
+	}
+	if allBranches {
+		m.statusMsg = "Generating standup (" + since + ", all branches)..."
+	} else {
+		m.statusMsg = "Generating standup (" + since + ")..."
+	}
+	return m, runStandupReportCmd(cloneRepos(m.repos), since, allBranches)
 }
 
 func (m Model) handleCommandPaletteMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

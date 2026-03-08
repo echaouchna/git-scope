@@ -1,6 +1,12 @@
 package tui
 
 import (
+	"fmt"
+	"os/exec"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -92,6 +98,14 @@ type repoStatusRefreshMsg struct {
 	repos []model.Repo
 }
 
+type standupReportMsg struct {
+	since       string
+	allBranches bool
+	summary     string
+	lines       []string
+	err         error
+}
+
 func startRepoWatcherCmd(repos []model.Repo, ignore []string) tea.Cmd {
 	return func() tea.Msg {
 		watcher, err := fswatch.NewRepoWatcher(repos, ignore)
@@ -127,6 +141,170 @@ func startRepoPollTickCmd() tea.Cmd {
 	return tea.Tick(repoPollInterval, func(time.Time) tea.Msg {
 		return repoPollTickMsg{}
 	})
+}
+
+func runStandupReportCmd(repos []model.Repo, since string, allBranches bool) tea.Cmd {
+	return func() tea.Msg {
+		summary, lines, err := buildStandupReport(repos, since, allBranches)
+		return standupReportMsg{
+			since:       since,
+			allBranches: allBranches,
+			summary:     summary,
+			lines:       lines,
+			err:         err,
+		}
+	}
+}
+
+func buildStandupReport(repos []model.Repo, since string, allBranches bool) (string, []string, error) {
+	if len(repos) == 0 {
+		return "No repositories loaded", nil, nil
+	}
+
+	sort.Slice(repos, func(i, j int) bool {
+		return repos[i].Path < repos[j].Path
+	})
+
+	sinceArg := normalizeStandupSinceArg(since)
+	lines := []string{}
+	active := 0
+
+	results := collectStandupReportResults(repos, sinceArg, 5, allBranches)
+	for _, result := range results {
+		if len(result.commits) == 0 && !result.repo.Status.IsDirty && result.logErr == nil {
+			continue
+		}
+
+		active++
+		lines = append(lines, fmt.Sprintf("[%s] %s", result.repo.Name, result.repo.Path))
+		if result.repo.Status.Branch != "" {
+			lines = append(lines, fmt.Sprintf("  branch: %s (ahead:%d behind:%d)", result.repo.Status.Branch, result.repo.Status.Ahead, result.repo.Status.Behind))
+		}
+		if result.repo.Status.IsDirty {
+			lines = append(lines, fmt.Sprintf("  dirty: staged=%d modified=%d untracked=%d", result.repo.Status.Staged, result.repo.Status.Unstaged, result.repo.Status.Untracked))
+		}
+		if len(result.commits) > 0 {
+			lines = append(lines, "  commits:")
+			for _, c := range result.commits {
+				lines = append(lines, "  + "+c)
+			}
+		}
+		if result.logErr != nil {
+			lines = append(lines, "  warning: git log failed: "+result.logErr.Error())
+		}
+		lines = append(lines, "")
+	}
+
+	scope := "current branch"
+	if allBranches {
+		scope = "all branches"
+	}
+	if active == 0 {
+		return fmt.Sprintf("Standup (%s, %s): no activity across %d repos", since, scope, len(repos)), []string{"No recent commits or dirty working trees found."}, nil
+	}
+	return fmt.Sprintf("Standup (%s, %s): %d/%d repos with activity", since, scope, active, len(repos)), lines, nil
+}
+
+type standupReportResult struct {
+	repo    model.Repo
+	commits []string
+	logErr  error
+}
+
+func collectStandupReportResults(repos []model.Repo, since string, limit int, allBranches bool) []standupReportResult {
+	type task struct {
+		idx  int
+		repo model.Repo
+	}
+
+	results := make([]standupReportResult, len(repos))
+	if len(repos) == 0 {
+		return results
+	}
+
+	workerCount := runtime.NumCPU()
+	if workerCount < 4 {
+		workerCount = 4
+	}
+	if workerCount > 24 {
+		workerCount = 24
+	}
+	if workerCount > len(repos) {
+		workerCount = len(repos)
+	}
+
+	tasks := make(chan task, workerCount)
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer wg.Done()
+			for t := range tasks {
+				commits, err := repoRecentCommitsForStandup(t.repo.Path, since, limit, allBranches)
+				results[t.idx] = standupReportResult{
+					repo:    t.repo,
+					commits: commits,
+					logErr:  err,
+				}
+			}
+		}()
+	}
+
+	for i, repo := range repos {
+		tasks <- task{idx: i, repo: repo}
+	}
+	close(tasks)
+	wg.Wait()
+	return results
+}
+
+func repoRecentCommitsForStandup(repoPath, since string, limit int, allBranches bool) ([]string, error) {
+	args := []string{"log", "--since=" + since}
+	if allBranches {
+		args = append(args, "--all")
+	}
+	args = append(args, "--pretty=format:%h %s", fmt.Sprintf("-%d", limit))
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("%v (%s)", err, strings.TrimSpace(string(out)))
+	}
+
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, "\n")
+	commits := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			commits = append(commits, p)
+		}
+	}
+	return commits, nil
+}
+
+func normalizeStandupSinceArg(input string) string {
+	value := strings.TrimSpace(strings.ToLower(input))
+	if value == "" || value == "24h" {
+		return "24 hours ago"
+	}
+	if strings.HasSuffix(value, "h") || strings.HasSuffix(value, "d") || strings.HasSuffix(value, "w") {
+		n := strings.TrimSpace(value[:len(value)-1])
+		if n != "" {
+			switch value[len(value)-1] {
+			case 'h':
+				return n + " hours ago"
+			case 'd':
+				return n + " days ago"
+			case 'w':
+				return n + " weeks ago"
+			}
+		}
+	}
+	return input
 }
 
 // openEditorMsg is sent to trigger opening an editor

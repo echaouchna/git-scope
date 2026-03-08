@@ -293,6 +293,17 @@ func (m Model) handlePanelDataMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 			logNonFatal("browser", msg.err.Error())
 		}
 		return m, nil, true
+	case standupReportMsg:
+		if msg.err != nil {
+			m.statusMsg = "⚠ standup failed: " + msg.err.Error()
+			logNonFatal("standup", msg.err.Error())
+			return m, nil, true
+		}
+		m.lastActionSummary = msg.summary
+		m.lastActionLogLines = msg.lines
+		m.statusMsg = "✓ " + msg.summary
+		m.enterActionLogsMode()
+		return m, nil, true
 	case commonBranchesLoadedMsg:
 		m.gitActionLoadingBranch = false
 		if msg.err != nil {

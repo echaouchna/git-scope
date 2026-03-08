@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -95,15 +96,9 @@ func ScanRoots(roots, ignore []string) ([]model.Repo, error) {
 					}
 					repoName := filepath.Base(repoPath)
 
-					status, serr := gitstatus.Status(repoPath)
-
 					repo := model.Repo{
-						Name:   repoName,
-						Path:   repoPath,
-						Status: status,
-					}
-					if serr != nil {
-						repo.Status.ScanError = serr.Error()
+						Name: repoName,
+						Path: repoPath,
 					}
 
 					mu.Lock()
@@ -124,7 +119,7 @@ func ScanRoots(roots, ignore []string) ([]model.Repo, error) {
 	}
 
 	wg.Wait()
-	return repos, nil
+	return refreshStatusesWithPool(repos, defaultStatusWorkers()), nil
 }
 
 type ignoreRuleKind int
@@ -259,23 +254,58 @@ func PrintJSON(w io.Writer, repos []model.Repo) error {
 // RefreshStatuses updates git status for an already-known repository list.
 // It preserves repo identity fields (name/path) and only refreshes status.
 func RefreshStatuses(repos []model.Repo) []model.Repo {
-	out := make([]model.Repo, len(repos))
-	var wg sync.WaitGroup
+	return refreshStatusesWithPool(repos, defaultStatusWorkers())
+}
 
-	for i := range repos {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			r := repos[idx]
-			status, err := gitstatus.Status(r.Path)
-			r.Status = status
-			if err != nil {
-				r.Status.ScanError = err.Error()
-			}
-			out[idx] = r
-		}(i)
+func defaultStatusWorkers() int {
+	workers := runtime.NumCPU() * 2
+	if workers < 4 {
+		workers = 4
+	}
+	if workers > 32 {
+		workers = 32
+	}
+	return workers
+}
+
+func refreshStatusesWithPool(repos []model.Repo, maxWorkers int) []model.Repo {
+	out := make([]model.Repo, len(repos))
+	if len(repos) == 0 {
+		return out
+	}
+	if maxWorkers <= 0 {
+		maxWorkers = 1
+	}
+	if maxWorkers > len(repos) {
+		maxWorkers = len(repos)
 	}
 
+	type task struct {
+		idx int
+	}
+
+	tasks := make(chan task, maxWorkers)
+	var wg sync.WaitGroup
+	wg.Add(maxWorkers)
+	for range maxWorkers {
+		go func() {
+			defer wg.Done()
+			for t := range tasks {
+				r := repos[t.idx]
+				status, err := gitstatus.Status(r.Path)
+				r.Status = status
+				if err != nil {
+					r.Status.ScanError = err.Error()
+				}
+				out[t.idx] = r
+			}
+		}()
+	}
+
+	for i := range repos {
+		tasks <- task{idx: i}
+	}
+	close(tasks)
 	wg.Wait()
 	return out
 }
