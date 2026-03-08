@@ -12,10 +12,11 @@ import (
 const sampleConfigTemplate = `# Git-Scope Configuration
 # Copy this file to ~/.config/git-scope/config.yml
 
-# Root directories to scan for git repositories
-roots:
-  - ~/code
-  - ~/projects
+# Root directories to scan for git repositories (optional).
+# If omitted, git-scope uses the current working directory by default.
+# roots:
+#   - ~/code
+#   - ~/projects
 
 # Directories to ignore during scanning.
 # Rules:
