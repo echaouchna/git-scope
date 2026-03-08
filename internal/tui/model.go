@@ -105,6 +105,7 @@ type Model struct {
 	gitActionQueue          []model.Repo
 	gitActionExecArgs       []string
 	gitActionRunner         *gitActionRunner
+	gitActionRunID          int
 	gitActionCancelPending  bool
 	gitActionScopeName      string
 	gitActionProgressIdx    int

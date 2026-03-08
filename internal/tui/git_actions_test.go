@@ -73,3 +73,93 @@ func TestGitActionCommandArgsForPull(t *testing.T) {
 		t.Fatalf("unexpected pull args: %#v", args)
 	}
 }
+
+func TestHandleGitActionHeartbeatDoesNotCancelBatch(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	m := Model{
+		gitActionRunning:        true,
+		gitActionType:           GitActionPullRebase,
+		gitActionProgressTotal:  5,
+		gitActionProgressIdx:    1,
+		gitActionSuccess:        1,
+		gitActionFailed:         0,
+		gitActionCurrentRepo:    "application",
+		gitActionStartedAt:      now.Add(-2 * time.Minute),
+		gitActionLastProgressAt: now.Add(-90 * time.Second),
+		gitActionRepoTimeout:    60 * time.Second,
+	}
+
+	m.handleGitActionHeartbeat(now)
+
+	if m.gitActionCancelPending {
+		t.Fatalf("heartbeat should not cancel batch action")
+	}
+	for _, line := range m.gitActionLogLines {
+		if strings.Contains(line, "watchdog") || strings.Contains(line, "cancelling batch") {
+			t.Fatalf("heartbeat should not append watchdog cancellation logs, got %q", line)
+		}
+	}
+	if !strings.Contains(m.statusMsg, "idle:") {
+		t.Fatalf("status message should still include idle time, got %q", m.statusMsg)
+	}
+}
+
+func TestEscDuringGitActionReleasesUIImmediately(t *testing.T) {
+	t.Parallel()
+
+	m := Model{
+		gitActionRunning:   true,
+		gitActionType:      GitActionPullRebase,
+		gitActionScopeName: "selected",
+	}
+
+	out, _, handled := m.handleGitActionRunningState("esc")
+	if !handled {
+		t.Fatalf("esc should be handled while action is running")
+	}
+
+	updated := out.(Model)
+	if updated.gitActionRunning {
+		t.Fatalf("git action should stop running immediately after cancel")
+	}
+	if updated.gitActionCancelPending {
+		t.Fatalf("cancel pending should be cleared after immediate cancellation")
+	}
+	if !strings.Contains(updated.statusMsg, "cancelled") {
+		t.Fatalf("expected cancelled status, got %q", updated.statusMsg)
+	}
+}
+
+func TestGitActionRunnerStartedIgnoredWhenRunNotActive(t *testing.T) {
+	t.Parallel()
+
+	cancelled := false
+	runner := &gitActionRunner{
+		results: make(chan gitActionRepoDoneMsg),
+		cancel: func() {
+			cancelled = true
+		},
+		id: 7,
+	}
+
+	m := Model{
+		gitActionRunning: false,
+		gitActionRunID:   7,
+	}
+
+	updated, cmd, handled := m.handleGitActionProgressMsgs(gitActionRunnerStartedMsg{runner: runner})
+	if !handled {
+		t.Fatalf("runner started message should be handled")
+	}
+	if cmd == nil {
+		t.Fatalf("expected drain wait command for inactive runner")
+	}
+	if !cancelled {
+		t.Fatalf("inactive run should cancel runner immediately")
+	}
+	if updated.gitActionRunner != nil {
+		t.Fatalf("inactive run should not attach runner to model")
+	}
+}

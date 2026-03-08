@@ -34,6 +34,7 @@ type gitActionRepoDoneMsg struct {
 type gitActionRunner struct {
 	results chan gitActionRepoDoneMsg
 	cancel  context.CancelFunc
+	id      int
 }
 
 type gitActionRunnerStartedMsg struct {
@@ -230,12 +231,13 @@ func (m Model) gitActionArgs() ([]string, error) {
 	}
 }
 
-func startParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
+func startParallelGitActionCmd(repos []model.Repo, gitArgs []string, runID int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
 		runner := &gitActionRunner{
 			results: make(chan gitActionRepoDoneMsg, len(repos)),
 			cancel:  cancel,
+			id:      runID,
 		}
 		if len(repos) == 0 {
 			close(runner.results)

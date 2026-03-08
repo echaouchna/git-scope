@@ -346,26 +346,45 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		if msg.runner == nil {
 			return m, nil, true
 		}
+		if msg.runner.id != m.gitActionRunID {
+			return m, waitGitActionProgressCmd(msg.runner), true
+		}
+		if !m.gitActionRunning {
+			msg.runner.cancel()
+			return m, waitGitActionProgressCmd(msg.runner), true
+		}
 		m.gitActionRunner = msg.runner
 		if m.gitActionCancelPending {
 			m.cancelGitActionRun()
 		}
 		return m, waitGitActionProgressCmd(msg.runner), true
 	case gitActionRepoProgressMsg:
-		m.applyGitActionRepoResult(msg.result)
 		if msg.runner == nil {
 			return m, nil, true
 		}
+		if msg.runner.id != m.gitActionRunID || !m.gitActionRunning || m.gitActionRunner != msg.runner {
+			return m, waitGitActionProgressCmd(msg.runner), true
+		}
+		m.applyGitActionRepoResult(msg.result)
 		return m, waitGitActionProgressCmd(msg.runner), true
 	case gitActionRunnerHeartbeatMsg:
 		if msg.runner == nil {
 			return m, nil, true
+		}
+		if msg.runner.id != m.gitActionRunID || !m.gitActionRunning || m.gitActionRunner != msg.runner {
+			return m, waitGitActionProgressCmd(msg.runner), true
 		}
 		if m.gitActionRunning && m.gitActionRunner == msg.runner {
 			m.handleGitActionHeartbeat(msg.at)
 		}
 		return m, waitGitActionProgressCmd(msg.runner), true
 	case gitActionRunnerDoneMsg:
+		if msg.runner == nil {
+			return m, nil, true
+		}
+		if msg.runner.id != m.gitActionRunID || m.gitActionRunner != msg.runner {
+			return m, nil, true
+		}
 		m.gitActionRunner = nil
 		m.finishGitActionRun()
 		return m, nil, true
@@ -422,15 +441,6 @@ func (m *Model) handleGitActionHeartbeat(now time.Time) {
 	elapsed := now.Sub(m.gitActionStartedAt).Round(time.Second)
 	idle := now.Sub(last)
 	idleRounded := idle.Round(time.Second)
-	limit := m.gitActionRepoTimeout + 20*time.Second
-	if m.gitActionRepoTimeout <= 0 {
-		limit = 80 * time.Second
-	}
-	if idle > limit && !m.gitActionCancelPending {
-		warn := fmt.Sprintf("[watchdog] no progress for %s (timeout %s) - cancelling batch", idleRounded, m.gitActionRepoTimeout)
-		m.gitActionLogLines = append(m.gitActionLogLines, warn)
-		m.cancelGitActionRun()
-	}
 	m.statusMsg = fmt.Sprintf(
 		"Running %s on %d repo(s): %d/%d done, %d ok, %d failed (current: %s, elapsed: %s, idle: %s)",
 		m.gitActionName(),
@@ -883,6 +893,7 @@ func (m Model) handleGitActionRunningState(key string) (tea.Model, tea.Cmd, bool
 	}
 	if key == "esc" {
 		m.cancelGitActionRun()
+		m.finishGitActionRun()
 		return m, nil, true
 	}
 	if key == "ctrl+c" || key == "q" {
@@ -977,6 +988,7 @@ func (m Model) startGitActionRun(finished bool) (tea.Model, tea.Cmd) {
 
 	m.gitActionRunning = true
 	m.gitActionError = ""
+	m.gitActionRunID++
 	m.gitActionQueue = repos
 	m.gitActionExecArgs = gitArgs
 	m.gitActionRunner = nil
@@ -1000,7 +1012,7 @@ func (m Model) startGitActionRun(finished bool) (tea.Model, tea.Cmd) {
 		m.gitActionProgressTotal,
 		gitActionWorkerCount(m.gitActionProgressTotal),
 	)
-	return m, tea.Batch(startParallelGitActionCmd(repos, gitArgs), m.spinner.Tick)
+	return m, tea.Batch(startParallelGitActionCmd(repos, gitArgs, m.gitActionRunID), m.spinner.Tick)
 }
 
 // workspaceScanCompleteMsg is sent when workspace scanning is complete
