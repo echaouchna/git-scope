@@ -116,6 +116,10 @@ func (m Model) handleScanMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 		default:
 			m.statusMsg = fmt.Sprintf("✓ Found %d repos", len(msg.repos))
 		}
+		if msg.warning != "" {
+			m.statusMsg = "⚠ " + msg.warning
+			logNonFatal("scan", msg.warning)
+		}
 		if len(msg.repos) == 0 {
 			return m, nil, true
 		}
@@ -283,6 +287,12 @@ func (m Model) handleOpenEditorMsg(msg openEditorMsg) (Model, tea.Cmd) {
 
 func (m Model) handlePanelDataMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := msg.(type) {
+	case browserOpenResultMsg:
+		if msg.err != nil {
+			m.statusMsg = "⚠ failed to open browser: " + msg.err.Error()
+			logNonFatal("browser", msg.err.Error())
+		}
+		return m, nil, true
 	case commonBranchesLoadedMsg:
 		m.gitActionLoadingBranch = false
 		if msg.err != nil {
@@ -892,9 +902,16 @@ func scanWorkspaceCmd(workspacePath string, ignore []string) tea.Cmd {
 // openBrowserCmd opens a URL in the default browser
 func openBrowserCmd(url string) tea.Cmd {
 	return func() tea.Msg {
-		_ = browser.Open(url)
-		return nil
+		return browserOpenResultMsg{
+			url: url,
+			err: browser.Open(url),
+		}
 	}
+}
+
+type browserOpenResultMsg struct {
+	url string
+	err error
 }
 
 func cloneRepos(repos []model.Repo) []model.Repo {
@@ -921,4 +938,8 @@ func watcherFallbackMessage(err error) string {
 	return "⚠ file watcher hit OS limits; switched to polling every 5s. " +
 		"Tip: increase inotify/FD limits (fs.inotify.max_user_watches, ulimit -n) or narrow roots/ignore dirs. Cause: " +
 		err.Error()
+}
+
+func logNonFatal(component, detail string) {
+	_, _ = fmt.Fprintf(os.Stderr, "git-scope non-fatal [%s]: %s\n", component, detail)
 }

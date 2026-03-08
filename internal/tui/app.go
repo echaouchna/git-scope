@@ -46,12 +46,16 @@ func scanReposCmd(cfg *config.Config, forceRefresh bool) tea.Cmd {
 			return scanErrorMsg{err: err}
 		}
 
-		// Save to cache
-		_ = cacheStore.Save(repos, cfg.Roots)
+		// Save to cache (non-fatal on failure).
+		warning := ""
+		if err := cacheStore.Save(repos, cfg.Roots); err != nil {
+			warning = "cache save failed: " + err.Error()
+		}
 
 		return scanCompleteMsg{
 			repos:     repos,
 			fromCache: false,
+			warning:   warning,
 		}
 	}
 }
@@ -60,6 +64,7 @@ func scanReposCmd(cfg *config.Config, forceRefresh bool) tea.Cmd {
 type scanCompleteMsg struct {
 	repos     []model.Repo
 	fromCache bool
+	warning   string
 }
 
 // scanErrorMsg is sent when scanning fails
