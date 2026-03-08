@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,14 @@ import (
 func TestGitActionWorkerCountBounds(t *testing.T) {
 	t.Parallel()
 
+	expectedLarge := runtime.GOMAXPROCS(0) * 2
+	if expectedLarge < 4 {
+		expectedLarge = 4
+	}
+	if expectedLarge > 16 {
+		expectedLarge = 16
+	}
+
 	tests := []struct {
 		repos int
 		want  int
@@ -18,7 +27,7 @@ func TestGitActionWorkerCountBounds(t *testing.T) {
 		{repos: 0, want: 0},
 		{repos: 1, want: 1},
 		{repos: 3, want: 3},
-		{repos: 1000, want: 16},
+		{repos: 1000, want: expectedLarge},
 	}
 
 	for _, tt := range tests {

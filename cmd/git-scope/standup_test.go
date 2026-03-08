@@ -137,15 +137,15 @@ func TestRepoRecentCommitsAuthorFilter(t *testing.T) {
 
 	writeFile(t, filepath.Join(repo, "a.txt"), "a\n")
 	runGit(t, repo, "add", ".")
-	runGit(t, repo, "commit", "-m", "main user commit")
+	runGitWithEnv(t, repo, []string{
+		"GIT_AUTHOR_NAME=Main User",
+		"GIT_AUTHOR_EMAIL=main@example.com",
+		"GIT_COMMITTER_NAME=Main User",
+		"GIT_COMMITTER_EMAIL=main@example.com",
+	}, "commit", "-m", "main user commit")
 
 	writeFile(t, filepath.Join(repo, "b.txt"), "b\n")
-	runGitWithEnv(t, repo, []string{
-		"GIT_AUTHOR_NAME=Other User",
-		"GIT_AUTHOR_EMAIL=other@example.com",
-		"GIT_COMMITTER_NAME=Other User",
-		"GIT_COMMITTER_EMAIL=other@example.com",
-	}, "add", ".")
+	runGit(t, repo, "add", ".")
 	runGitWithEnv(t, repo, []string{
 		"GIT_AUTHOR_NAME=Other User",
 		"GIT_AUTHOR_EMAIL=other@example.com",
