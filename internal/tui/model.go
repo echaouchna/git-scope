@@ -120,6 +120,8 @@ type Model struct {
 	actionLogsInput        textinput.Model
 	actionLogsAutocomplete int
 	actionLogsLastQuery    string
+	actionLogsLive         bool
+	actionLogsAutoFollow   bool
 	// Background watcher state
 	repoWatcher         *fswatch.RepoWatcher
 	watchPolling        bool

@@ -365,6 +365,14 @@ func (m Model) handleGitActionProgressMsgs(msg tea.Msg) (Model, tea.Cmd, bool) {
 }
 
 func (m *Model) applyGitActionRepoResult(result gitActionRepoDoneMsg) {
+	if result.started {
+		m.gitActionCurrentRepo = result.repoName
+		m.gitActionLogLines = append(m.gitActionLogLines, fmt.Sprintf("[%s] RUNNING", result.repoName))
+		if m.state == StateActionLogs && m.actionLogsLive && m.actionLogsAutoFollow {
+			m.setActionLogsOffsetToBottom()
+		}
+		return
+	}
 	m.gitActionProgressIdx++
 	m.gitActionCurrentRepo = result.repoName
 	if result.err != nil {
@@ -385,6 +393,9 @@ func (m *Model) applyGitActionRepoResult(result gitActionRepoDoneMsg) {
 			}
 		}
 	}
+	if m.state == StateActionLogs && m.actionLogsLive && m.actionLogsAutoFollow {
+		m.setActionLogsOffsetToBottom()
+	}
 }
 
 func (m *Model) finishGitActionRun() {
@@ -396,6 +407,8 @@ func (m *Model) finishGitActionRun() {
 		m.statusMsg = fmt.Sprintf("⚠ %s cancelled: %d ok, %d failed [%s]", m.gitActionName(), m.gitActionSuccess, m.gitActionFailed, m.gitActionScopeName)
 		m.lastActionSummary = m.statusMsg
 		m.lastActionLogLines = append([]string{}, m.gitActionLogLines...)
+		m.actionLogsLive = false
+		m.actionLogsAutoFollow = false
 		return
 	}
 	if m.gitActionFailed == 0 {
@@ -408,6 +421,8 @@ func (m *Model) finishGitActionRun() {
 	}
 	m.lastActionSummary = m.statusMsg
 	m.lastActionLogLines = append([]string{}, m.gitActionLogLines...)
+	m.actionLogsLive = false
+	m.actionLogsAutoFollow = false
 }
 
 func (m Model) handleStateModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
@@ -776,7 +791,7 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "l":
-		if len(m.lastActionLogLines) == 0 {
+		if !m.gitActionRunning && len(m.lastActionLogLines) == 0 {
 			m.gitActionError = "no action logs yet"
 			return m, nil
 		}
@@ -792,6 +807,10 @@ func (m Model) handleGitActionMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleGitActionRunningState(key string) (tea.Model, tea.Cmd, bool) {
 	if !m.gitActionRunning {
 		return m, nil, false
+	}
+	if key == "l" {
+		m.enterActionLogsMode()
+		return m, nil, true
 	}
 	if key == "esc" {
 		m.cancelGitActionRun()

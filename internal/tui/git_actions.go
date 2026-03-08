@@ -26,6 +26,7 @@ type gitActionResultMsg struct {
 
 type gitActionRepoDoneMsg struct {
 	repoName string
+	started  bool
 	err      error
 	output   string
 }
@@ -236,6 +237,15 @@ func startParallelGitActionCmd(repos []model.Repo, gitArgs []string) tea.Cmd {
 			go func() {
 				defer wg.Done()
 				for repo := range jobs {
+					select {
+					case runner.results <- gitActionRepoDoneMsg{
+						repoName: repo.Name,
+						started:  true,
+					}:
+					case <-ctx.Done():
+						return
+					}
+
 					result := runGitActionRepo(ctx, repo, gitArgs)
 					select {
 					case runner.results <- result:

@@ -33,13 +33,20 @@ func (m *Model) enterCommandPaletteMode() tea.Cmd {
 }
 
 func (m *Model) enterActionLogsMode() {
+	live := m.state == StateGitAction && m.gitActionRunning
 	m.actionLogsReturnState = m.state
 	m.state = StateActionLogs
-	m.gitActionLogOffset = 0
 	m.actionLogsInput.SetValue("")
 	m.actionLogsInput.Focus()
 	m.actionLogsAutocomplete = 0
 	m.actionLogsLastQuery = ""
+	m.actionLogsLive = live
+	m.actionLogsAutoFollow = live
+	if live {
+		m.setActionLogsOffsetToBottom()
+		return
+	}
+	m.gitActionLogOffset = 0
 }
 
 func (m *Model) exitCommandPaletteMode() {
@@ -413,6 +420,8 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.actionLogsReturnState = StateReady
 		m.actionLogsInput.Blur()
+		m.actionLogsLive = false
+		m.actionLogsAutoFollow = false
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
@@ -430,9 +439,17 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.actionLogsInput.SetValue(candidates[m.actionLogsAutocomplete])
 		m.actionLogsInput.CursorEnd()
-		m.gitActionLogOffset = 0
+		if m.actionLogsLive {
+			m.actionLogsAutoFollow = true
+			m.setActionLogsOffsetToBottom()
+		} else {
+			m.gitActionLogOffset = 0
+		}
 		return m, nil
 	case "up", "k":
+		if m.actionLogsLive {
+			m.actionLogsAutoFollow = false
+		}
 		if m.gitActionLogOffset > 0 {
 			m.gitActionLogOffset--
 		}
@@ -441,8 +458,14 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.gitActionLogOffset < maxOffset {
 			m.gitActionLogOffset++
 		}
+		if m.actionLogsLive {
+			m.actionLogsAutoFollow = m.gitActionLogOffset >= maxOffset
+		}
 		return m, nil
 	case "pgup":
+		if m.actionLogsLive {
+			m.actionLogsAutoFollow = false
+		}
 		m.gitActionLogOffset -= visible
 		if m.gitActionLogOffset < 0 {
 			m.gitActionLogOffset = 0
@@ -453,13 +476,21 @@ func (m Model) handleActionLogsMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.gitActionLogOffset > maxOffset {
 			m.gitActionLogOffset = maxOffset
 		}
+		if m.actionLogsLive {
+			m.actionLogsAutoFollow = m.gitActionLogOffset >= maxOffset
+		}
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.actionLogsInput, cmd = m.actionLogsInput.Update(msg)
 	m.actionLogsAutocomplete = 0
 	m.actionLogsLastQuery = strings.ToLower(strings.TrimSpace(m.actionLogsInput.Value()))
-	m.gitActionLogOffset = 0
+	if m.actionLogsLive {
+		m.actionLogsAutoFollow = true
+		m.setActionLogsOffsetToBottom()
+	} else {
+		m.gitActionLogOffset = 0
+	}
 	return m, cmd
 }
 
@@ -474,16 +505,17 @@ func (m Model) actionLogsVisibleRows() int {
 }
 
 func (m Model) filteredActionLogLines() []string {
+	sourceLines := m.actionLogSourceLines()
 	query := strings.ToLower(strings.TrimSpace(m.actionLogsInput.Value()))
 	if query == "" {
-		return m.lastActionLogLines
+		return sourceLines
 	}
 
 	// Filter by logical blocks (separated by empty lines) so repo context
 	// remains visible when matching commit/body lines.
 	blocks := make([][]string, 0)
 	current := make([]string, 0)
-	for _, line := range m.lastActionLogLines {
+	for _, line := range sourceLines {
 		if strings.TrimSpace(line) == "" {
 			if len(current) > 0 {
 				blocks = append(blocks, current)
@@ -497,7 +529,7 @@ func (m Model) filteredActionLogLines() []string {
 		blocks = append(blocks, current)
 	}
 
-	out := make([]string, 0, len(m.lastActionLogLines))
+	out := make([]string, 0, len(sourceLines))
 	for _, block := range blocks {
 		if len(block) == 0 {
 			continue
@@ -555,7 +587,7 @@ func (m Model) actionLogsAutocompleteCandidates() []string {
 	seen := map[string]struct{}{}
 	candidates := make([]string, 0)
 
-	for _, line := range m.lastActionLogLines {
+	for _, line := range m.actionLogSourceLines() {
 		if strings.HasPrefix(line, "  + ") {
 			trimmed := strings.TrimPrefix(line, "  + ")
 			parts := strings.SplitN(trimmed, " | ", 2)
@@ -578,4 +610,21 @@ func (m Model) actionLogsAutocompleteCandidates() []string {
 		}
 	}
 	return candidates
+}
+
+func (m Model) actionLogSourceLines() []string {
+	if m.actionLogsLive && m.gitActionRunning {
+		return m.gitActionLogLines
+	}
+	return m.lastActionLogLines
+}
+
+func (m *Model) setActionLogsOffsetToBottom() {
+	lines := m.filteredActionLogLines()
+	visible := m.actionLogsVisibleRows()
+	maxOffset := 0
+	if len(lines) > visible {
+		maxOffset = len(lines) - visible
+	}
+	m.gitActionLogOffset = maxOffset
 }

@@ -762,14 +762,18 @@ func (m Model) renderActionLogsModal() string {
 	}
 
 	lines := []string{
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render("Last Action Logs"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#A78BFA")).Bold(true).Render(m.actionLogsTitle()),
 		"",
-		truncateString(m.lastActionSummary, logLineWidth),
+		truncateString(m.actionLogsSummary(), logLineWidth),
 		"Filter: " + m.actionLogsInput.View(),
 		"",
 	}
 	if len(filteredLines) == 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("(no logs)"))
+		if m.actionLogsLive && m.gitActionRunning {
+			lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("(waiting for live logs...)"))
+		} else {
+			lines = append(lines, lipgloss.NewStyle().Foreground(mutedColor).Render("(no logs)"))
+		}
 	} else {
 		for _, raw := range filteredLines[start:end] {
 			lines = append(lines, m.renderLogLine(raw, logLineWidth))
@@ -780,16 +784,40 @@ func (m Model) renderActionLogsModal() string {
 	if cands := m.actionLogsAutocompleteCandidates(); len(cands) > 0 {
 		autohint = " | Tab autocomplete author"
 	}
-	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll, PgUp/PgDn page, type filter"+autohint+", Esc close"))
+	followHint := ""
+	if m.actionLogsLive {
+		if m.actionLogsAutoFollow {
+			followHint = " | live autoscroll: on"
+		} else {
+			followHint = " | live autoscroll: off"
+		}
+	}
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(mutedColor).Render("↑/↓ scroll, PgUp/PgDn page, type filter"+autohint+followHint+", Esc close"))
 	b.WriteString(modalStyle.Render(strings.Join(lines, "\n")))
 	b.WriteString("\n\n")
 	b.WriteString(m.renderHelp())
 	return b.String()
 }
 
+func (m Model) actionLogsTitle() string {
+	if m.actionLogsLive && m.gitActionRunning {
+		return "Action Logs (Live)"
+	}
+	return "Last Action Logs"
+}
+
+func (m Model) actionLogsSummary() string {
+	if m.actionLogsLive && m.gitActionRunning {
+		return m.statusMsg
+	}
+	return m.lastActionSummary
+}
+
 func (m Model) renderLogLine(line string, maxWidth int) string {
 	trimmed := truncateString(line, maxWidth)
 	switch {
+	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "] RUNNING"):
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Bold(true).Render(trimmed)
 	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "] OK"):
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#22C55E")).Bold(true).Render(trimmed)
 	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "] ERROR"):
