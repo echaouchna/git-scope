@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"runtime"
 	"strings"
@@ -55,7 +54,7 @@ func TestGitActionRepoTimeout(t *testing.T) {
 func TestNewGitActionCommandSetsNonInteractiveEnv(t *testing.T) {
 	t.Parallel()
 
-	cmd := newGitActionCommand(context.Background(), ".", []string{"status"})
+	cmd := newGitActionCommand(".", []string{"status"})
 	joined := strings.Join(cmd.Env, "\n")
 	if !strings.Contains(joined, "GIT_TERMINAL_PROMPT=0") {
 		t.Fatalf("command env missing GIT_TERMINAL_PROMPT=0")

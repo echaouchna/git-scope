@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -317,14 +318,15 @@ func gitActionRepoTimeout(gitArgs []string) time.Duration {
 	return 45 * time.Second
 }
 
-func newGitActionCommand(ctx context.Context, repoPath string, gitArgs []string) *exec.Cmd {
+func newGitActionCommand(repoPath string, gitArgs []string) *exec.Cmd {
 	args := gitActionCommandArgs(gitArgs)
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.Command("git", args...)
 	cmd.Dir = repoPath
 	cmd.Env = append(
 		os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 	)
+	configureGitActionProcess(cmd)
 	return cmd
 }
 
@@ -341,12 +343,12 @@ func runGitActionRepo(parentCtx context.Context, repo model.Repo, gitArgs []stri
 	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
-	cmd := newGitActionCommand(ctx, repo.Path, gitArgs)
-	out, err := cmd.CombinedOutput()
+	cmd := newGitActionCommand(repo.Path, gitArgs)
+	out, err := runGitActionCommand(ctx, cmd)
 	result := gitActionRepoDoneMsg{
 		repoName: repo.Name,
 		err:      err,
-		output:   strings.TrimSpace(string(out)),
+		output:   strings.TrimSpace(out),
 	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
@@ -364,6 +366,30 @@ func runGitActionRepo(parentCtx context.Context, repo model.Repo, gitArgs []stri
 		}
 	}
 	return result
+}
+
+func runGitActionCommand(ctx context.Context, cmd *exec.Cmd) (string, error) {
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	if err := cmd.Start(); err != nil {
+		return out.String(), err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		return out.String(), err
+	case <-ctx.Done():
+		killGitActionProcess(cmd)
+		<-done
+		return out.String(), ctx.Err()
+	}
 }
 
 func (m *Model) cancelGitActionRun() bool {
