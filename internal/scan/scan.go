@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -34,17 +36,18 @@ var smartIgnorePatterns = []string{
 // ScanRoots recursively scans the given root directories for git repositories
 // It skips directories matching the ignore patterns
 func ScanRoots(roots, ignore []string) ([]model.Repo, error) {
-	// Build ignore set from user config + smart defaults
-	ignoreSet := make(map[string]struct{}, len(ignore)+len(smartIgnorePatterns))
-
-	// Add user-defined ignores
-	for _, pattern := range ignore {
-		ignoreSet[pattern] = struct{}{}
-	}
-
-	// Add smart defaults (always apply for performance)
+	// Build ignore rules from user config + smart defaults.
+	// User rules support explicit semantics:
+	// - exact:<name> (or just <name>) for exact directory-name match
+	// - glob:<pattern> for directory-name glob match
+	// - path:<pattern> for repo-root-relative path matching
+	// - regex:<expr> or /expr/ for regex match (name or relative path)
+	ignoreRules := buildIgnoreRules(ignore)
 	for _, pattern := range smartIgnorePatterns {
-		ignoreSet[pattern] = struct{}{}
+		ignoreRules = append(ignoreRules, ignoreRule{
+			kind:    ignoreRuleExact,
+			pattern: pattern,
+		})
 	}
 
 	var mu sync.Mutex
@@ -70,8 +73,14 @@ func ScanRoots(roots, ignore []string) ([]model.Repo, error) {
 				}
 
 				// Skip ignored directories
-				if d.IsDir() && shouldIgnore(d.Name(), ignoreSet) {
-					return filepath.SkipDir
+				if d.IsDir() {
+					relPath, err := filepath.Rel(r, path)
+					if err != nil {
+						relPath = d.Name()
+					}
+					if shouldIgnore(d.Name(), relPath, ignoreRules) {
+						return filepath.SkipDir
+					}
 				}
 
 				// Found a .git directory
@@ -118,16 +127,108 @@ func ScanRoots(roots, ignore []string) ([]model.Repo, error) {
 	return repos, nil
 }
 
-// shouldIgnore checks if a directory name matches any ignore pattern
-func shouldIgnore(name string, ignoreSet map[string]struct{}) bool {
-	// Exact match
-	if _, ok := ignoreSet[name]; ok {
-		return true
+type ignoreRuleKind int
+
+const (
+	ignoreRuleExact ignoreRuleKind = iota
+	ignoreRuleGlob
+	ignoreRulePath
+	ignoreRuleRegex
+)
+
+type ignoreRule struct {
+	kind    ignoreRuleKind
+	pattern string
+	regex   *regexp.Regexp
+}
+
+func buildIgnoreRules(patterns []string) []ignoreRule {
+	rules := make([]ignoreRule, 0, len(patterns))
+	for _, raw := range patterns {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(p, "exact:"):
+			v := strings.TrimSpace(strings.TrimPrefix(p, "exact:"))
+			if v != "" {
+				rules = append(rules, ignoreRule{kind: ignoreRuleExact, pattern: v})
+			}
+		case strings.HasPrefix(p, "glob:"):
+			v := strings.TrimSpace(strings.TrimPrefix(p, "glob:"))
+			if v != "" {
+				rules = append(rules, ignoreRule{kind: ignoreRuleGlob, pattern: v})
+			}
+		case strings.HasPrefix(p, "path:"):
+			v := cleanIgnorePath(strings.TrimSpace(strings.TrimPrefix(p, "path:")))
+			if v != "" {
+				rules = append(rules, ignoreRule{kind: ignoreRulePath, pattern: v})
+			}
+		case strings.HasPrefix(p, "regex:"):
+			v := strings.TrimSpace(strings.TrimPrefix(p, "regex:"))
+			if v == "" {
+				continue
+			}
+			re, err := regexp.Compile(v)
+			if err != nil {
+				continue
+			}
+			rules = append(rules, ignoreRule{kind: ignoreRuleRegex, pattern: v, regex: re})
+		case strings.HasPrefix(p, "/") && strings.HasSuffix(p, "/") && len(p) > 2:
+			v := strings.TrimSuffix(strings.TrimPrefix(p, "/"), "/")
+			re, err := regexp.Compile(v)
+			if err != nil {
+				continue
+			}
+			rules = append(rules, ignoreRule{kind: ignoreRuleRegex, pattern: v, regex: re})
+		default:
+			// Default semantics are exact directory-name matching.
+			rules = append(rules, ignoreRule{kind: ignoreRuleExact, pattern: p})
+		}
 	}
-	// Suffix match
-	for pat := range ignoreSet {
-		if strings.HasSuffix(name, pat) {
-			return true
+	return rules
+}
+
+func cleanIgnorePath(p string) string {
+	p = strings.ReplaceAll(p, "\\", "/")
+	p = strings.Trim(p, "/")
+	if p == "." {
+		return ""
+	}
+	return p
+}
+
+// shouldIgnore checks if a directory name/relative path matches explicit ignore rules.
+// Default semantics for user-provided patterns are exact directory-name matching.
+func shouldIgnore(name, relPath string, rules []ignoreRule) bool {
+	rel := cleanIgnorePath(relPath)
+	for _, rule := range rules {
+		switch rule.kind {
+		case ignoreRuleExact:
+			if name == rule.pattern {
+				return true
+			}
+		case ignoreRuleGlob:
+			if ok, _ := path.Match(rule.pattern, name); ok {
+				return true
+			}
+		case ignoreRulePath:
+			if rel == rule.pattern {
+				return true
+			}
+			prefix := rule.pattern + "/"
+			if strings.HasPrefix(rel, prefix) {
+				return true
+			}
+			if ok, _ := path.Match(rule.pattern, rel); ok {
+				return true
+			}
+		case ignoreRuleRegex:
+			if rule.regex != nil && (rule.regex.MatchString(name) || rule.regex.MatchString(rel)) {
+				return true
+			}
 		}
 	}
 	return false

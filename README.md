@@ -163,6 +163,9 @@ roots:
 
 ignore:
   - node_modules
+  - glob:*.cache
+  - path:vendor/github.com
+  - regex:^tmp-
   - .venv
   - dist
   - .terraform
@@ -171,7 +174,12 @@ editor: code # any executable command available in PATH
 ```
 
 Notes:
-- `ignore` is fully configurable and supports folders like `.terraform`.
+- `ignore` supports explicit rule types and defaults to exact name matching:
+- `node_modules` or `exact:node_modules` -> exact directory-name match.
+- `glob:*.cache` -> directory-name glob match.
+- `path:vendor/github.com` -> root-relative path/subtree match.
+- `regex:^tmp-` or `/^tmp-/` -> regular expression match.
+- Invalid regex rules are ignored safely.
 - Open-project tools (Neovim, GitUI, Tig) appear only if installed on your machine.
 - In the open-project menu: type to filter options, use `↑/↓` and `PgUp/PgDn` to scroll, `Enter` to run.
 

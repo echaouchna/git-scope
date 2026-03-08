@@ -17,9 +17,17 @@ roots:
   - ~/code
   - ~/projects
 
-# Directories to ignore during scanning
+# Directories to ignore during scanning.
+# Rules:
+# - node_modules or exact:node_modules  => exact directory-name match (default)
+# - glob:*.cache                        => directory-name glob match
+# - path:vendor/github.com              => root-relative path/subtree match
+# - regex:^tmp-   or /^tmp-/            => regex match (name or relative path)
 ignore:
   - node_modules
+  - glob:*.cache
+  - path:vendor/github.com
+  - regex:^tmp-
   - .next
   - dist
   - build
