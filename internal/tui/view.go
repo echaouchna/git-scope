@@ -333,7 +333,7 @@ func (m Model) renderStats() string {
 		stats = append(stats, dirtyBadgeStyle.Render(fmt.Sprintf("● %d dirty", dirty)))
 	}
 	if clean > 0 {
-		stats = append(stats, cleanBadgeStyle.Render(fmt.Sprintf("✓ %d clean", clean)))
+		stats = append(stats, cleanBadgeStyle.Render(fmt.Sprintf("○ %d clean", clean)))
 	}
 	if selected := m.selectedReposCount(); selected > 0 {
 		selectedBadge := lipgloss.NewStyle().
@@ -393,7 +393,7 @@ func (m Model) renderStats() string {
 // renderLegend renders a compact single-line legend (Tuimorphic style)
 func (m Model) renderLegend() string {
 	dirty := dirtyDotStyle.Render("●") + legendStyle.Render(" dirty")
-	clean := cleanDotStyle.Render("✓") + legendStyle.Render(" clean")
+	clean := cleanDotStyle.Render("○") + legendStyle.Render(" clean")
 	editor := legendStyle.Render(fmt.Sprintf("  Editor: %s", m.cfg.Editor))
 
 	return legendStyle.Render(dirty + "  " + clean + editor)

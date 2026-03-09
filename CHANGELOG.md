@@ -15,6 +15,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 - Repository rows now visually mark bookmarked repositories.
+- Bookmarked repositories now show a more visible trailing star after the repository name instead of in the status column.
+- Clean repository status now uses a distinct hollow-circle icon to avoid colliding visually with the selection checkmark.
 - Command Palette search now uses fuzzy matching for easier command discovery.
 - Shortcuts/help text now includes bookmark actions (`b` to toggle, `B` to open bookmarks).
 

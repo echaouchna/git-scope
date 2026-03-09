@@ -519,12 +519,14 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 		}
 
 		// Status indicator with text.
-		status := "✓ Clean"
+		status := "○ Clean"
 		if r.Status.IsDirty {
 			status = "● Dirty"
 		}
+
+		repoName := r.Name
 		if m.bookmarkedPaths[r.Path] {
-			status = "★ " + status
+			repoName += "  ★"
 		}
 
 		selected := " "
@@ -535,7 +537,7 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 		rows = append(rows, table.Row{
 			selected,
 			status,
-			r.Name,
+			repoName,
 			r.Status.Branch,
 			formatNumber(r.Status.Staged),
 			formatNumber(r.Status.Unstaged),
