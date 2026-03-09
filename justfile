@@ -56,6 +56,6 @@ release-dry-run:
 
 # Build tip artifacts locally without publishing.
 tip-dry-run:
-  CHANGELOG_VERSION="$$(sed -n 's/^## \[\([^]]\+\)\].*/\1/p' CHANGELOG.md | head -n 1)" && \
+  CHANGELOG_VERSION="$$(awk '/^## \\[/ { line = $$0; sub(/^## \\[/, "", line); sub(/\\].*$$/, "", line); print line; exit }' CHANGELOG.md)" && \
   GORELEASER_CURRENT_TAG="v$${CHANGELOG_VERSION}-tip.local" \
   mise exec -- goreleaser release --clean --skip=validate --skip=publish --config .goreleaser-tip.yml

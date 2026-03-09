@@ -2,11 +2,19 @@
 set -euo pipefail
 
 changelog_version="$(
-  sed -n 's/^## \[\([^]]\+\)\].*/\1/p' CHANGELOG.md | head -n 1
+  awk '
+    /^## \[/ {
+      line = $0
+      sub(/^## \[/, "", line)
+      sub(/\].*$/, "", line)
+      print line
+      exit
+    }
+  ' CHANGELOG.md
 )"
 
 app_version="$(
-  sed -n 's/^var Version = "\([^"]\+\)"/\1/p' internal/app/version.go | head -n 1
+  awk -F'"' '/^var Version = "/ { print $2; exit }' internal/app/version.go
 )"
 
 if [[ -z "${changelog_version}" ]]; then

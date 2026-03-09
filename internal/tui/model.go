@@ -702,10 +702,6 @@ func (m Model) bookmarksCount() int {
 	return len(m.bookmarkedPaths)
 }
 
-func (m Model) isBookmarked(path string) bool {
-	return m.bookmarkedPaths[path]
-}
-
 func (m *Model) syncConfigBookmarks() error {
 	if m.cfg == nil {
 		return nil
