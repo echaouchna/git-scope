@@ -509,6 +509,12 @@ func (m Model) handleStateModeKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	case StateSearching:
 		next, cmd := m.handleSearchMode(msg)
 		return next, cmd, true
+	case StateBookmarks:
+		next, cmd := m.handleBookmarksMode(msg)
+		return next, cmd, true
+	case StateBookmarkSearch:
+		next, cmd := m.handleBookmarkSearchMode(msg)
+		return next, cmd, true
 	case StateWorkspaceSwitch:
 		next, cmd := m.handleWorkspaceSwitchMode(msg)
 		return next, cmd, true
@@ -619,6 +625,8 @@ func (m Model) handleReadyViewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	case "c":
 		m.searchQuery = ""
 		m.textInput.SetValue("")
+		m.bookmarkQuery = ""
+		m.bookmarkInput.SetValue("")
 		m.filterMode = FilterAll
 		m.resetPage()
 		m.resizeTable()
@@ -707,6 +715,31 @@ func (m Model) handleReadyMetaGeneralKey(key string) (tea.Model, tea.Cmd, bool) 
 		return m, textinput.Blink, true
 	case "a":
 		return m, m.enterGitActionMode(), true
+	case "b":
+		changed, bookmarked, err := m.toggleCurrentRepoBookmark()
+		if err != nil {
+			m.statusMsg = "⚠ failed to save bookmarks: " + err.Error()
+			return m, nil, true
+		}
+		if !changed {
+			m.statusMsg = "No repo selected"
+			return m, nil, true
+		}
+		m.updateTable()
+		if bookmarked {
+			m.statusMsg = "Bookmarked repo"
+		} else {
+			m.statusMsg = "Removed bookmark"
+		}
+		return m, nil, true
+	case "B":
+		m.enterBookmarksMode()
+		if m.bookmarksCount() == 0 {
+			m.statusMsg = "No bookmarks yet. Press b on a repo to add one."
+		} else {
+			m.statusMsg = fmt.Sprintf("Showing %d bookmarked repos", m.bookmarksCount())
+		}
+		return m, nil, true
 	default:
 		return m, nil, false
 	}
@@ -771,6 +804,111 @@ func (m Model) handleSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.searchQuery = m.textInput.Value()
 	m.updateTable()
 
+	return m, cmd
+}
+
+func (m Model) handleBookmarksMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "esc", "B":
+		m.exitBookmarksMode()
+		m.statusMsg = "Back to all repositories"
+		return m, nil
+	case "ctrl+c", "q":
+		m.stopRepoWatcher()
+		return m, tea.Quit
+	case "/":
+		m.state = StateBookmarkSearch
+		m.resizeTable()
+		m.bookmarkInput.Focus()
+		m.bookmarkInput.SetValue(m.bookmarkQuery)
+		return m, textinput.Blink
+	case "b":
+		changed, bookmarked, err := m.toggleCurrentRepoBookmark()
+		if err != nil {
+			m.statusMsg = "⚠ failed to save bookmarks: " + err.Error()
+			return m, nil
+		}
+		if !changed {
+			m.statusMsg = "No repo selected"
+			return m, nil
+		}
+		m.resetPage()
+		m.updateTable()
+		if bookmarked {
+			m.statusMsg = "Bookmarked repo"
+		} else {
+			m.statusMsg = "Removed bookmark"
+		}
+		return m, nil
+	}
+	if updated, cmd, handled := m.handleReadyNavigationKeys(msg); handled {
+		return updated, cmd
+	}
+	if updated, cmd, handled := m.handleReadyViewKeys(msg); handled {
+		return updated, cmd
+	}
+	if key == "?" {
+		m.enterShortcutsMode()
+		return m, nil
+	}
+	if key == "ctrl+p" {
+		return m, m.enterCommandPaletteMode()
+	}
+	if key == "l" {
+		if len(m.lastActionLogLines) == 0 {
+			m.statusMsg = "No action logs yet"
+			return m, nil
+		}
+		m.enterActionLogsMode()
+		return m, nil
+	}
+	if key == "e" {
+		updated, cmd, _ := m.handleReadyEditorCheck()
+		return updated, cmd
+	}
+	if key == "w" {
+		m.state = StateWorkspaceSwitch
+		m.workspaceInput.SetValue(m.currentWorkspacePath())
+		m.workspaceInput.CursorEnd()
+		m.workspaceInput.Focus()
+		m.workspaceError = ""
+		return m, textinput.Blink
+	}
+	if key == "a" {
+		return m, m.enterGitActionMode()
+	}
+	return m, nil
+}
+
+func (m Model) handleBookmarkSearchMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.state = StateBookmarks
+		m.resizeTable()
+		m.bookmarkInput.Blur()
+		return m, nil
+	case "enter":
+		m.bookmarkQuery = m.bookmarkInput.Value()
+		m.state = StateBookmarks
+		m.resizeTable()
+		m.bookmarkInput.Blur()
+		m.resetPage()
+		m.updateTable()
+		if m.bookmarkQuery != "" {
+			m.statusMsg = "Searching bookmarks: " + m.bookmarkQuery
+		} else {
+			m.statusMsg = "Bookmark search cleared"
+		}
+		return m, nil
+	case "ctrl+c":
+		return m, tea.Quit
+	}
+
+	var cmd tea.Cmd
+	m.bookmarkInput, cmd = m.bookmarkInput.Update(msg)
+	m.bookmarkQuery = m.bookmarkInput.Value()
+	m.updateTable()
 	return m, cmd
 }
 

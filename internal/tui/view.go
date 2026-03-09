@@ -25,6 +25,8 @@ func (m Model) renderContent() string {
 		b.WriteString(m.renderError())
 	case StateReady, StateSearching:
 		b.WriteString(m.renderDashboard())
+	case StateBookmarks, StateBookmarkSearch:
+		b.WriteString(m.renderBookmarksScreen())
 	case StateWorkspaceSwitch:
 		b.WriteString(m.renderWorkspaceModal())
 	case StateGitAction:
@@ -166,6 +168,39 @@ func (m Model) renderDashboard() string {
 	return b.String()
 }
 
+func (m Model) renderBookmarksScreen() string {
+	var b strings.Builder
+
+	logo := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#A78BFA")).Render("git-scope")
+	version := lipgloss.NewStyle().Foreground(lipgloss.Color("#6B7280")).Render(" v" + app.Version)
+	title := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#F59E0B")).
+		Bold(true).
+		Render("Bookmarks")
+	b.WriteString(logo + version + "  " + title)
+	b.WriteString("\n\n")
+
+	b.WriteString(m.renderStats())
+	b.WriteString("\n")
+	b.WriteString(m.renderBookmarkSearchSection())
+	b.WriteString("\n\n")
+	b.WriteString(m.table.View())
+	b.WriteString("\n")
+	if pathBar := m.renderSelectedRepoPathBar(); pathBar != "" {
+		b.WriteString(pathBar)
+		b.WriteString("\n")
+	}
+	if m.statusMsg != "" {
+		b.WriteString(statusStyle.Render("→ " + m.statusMsg))
+		b.WriteString("\n")
+	}
+	b.WriteString(m.renderLegend())
+	b.WriteString("\n")
+	b.WriteString(m.renderHelp())
+
+	return b.String()
+}
+
 func (m Model) renderSearchBar() string {
 	searchStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
@@ -198,6 +233,37 @@ func (m Model) renderSearchBadge() string {
 		Render(" (press c to clear)")
 
 	return searchBadge + clearHint
+}
+
+func (m Model) renderBookmarkSearchSection() string {
+	if m.state == StateBookmarkSearch {
+		searchStyle := lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#F59E0B")).
+			Padding(0, 1)
+		label := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#F59E0B")).
+			Bold(true).
+			Render("★ Search bookmarks: ")
+		return searchStyle.Render(label + m.bookmarkInput.View())
+	}
+
+	if m.bookmarkQuery == "" {
+		return lipgloss.NewStyle().
+			Foreground(mutedColor).
+			Render(fmt.Sprintf("★ %d bookmarked repos  (press / to search)", len(m.sortedRepos)))
+	}
+
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#111827")).
+		Background(lipgloss.Color("#FBBF24")).
+		Padding(0, 1).
+		Bold(true).
+		Render("★ " + m.bookmarkQuery)
+	clearHint := lipgloss.NewStyle().
+		Foreground(mutedColor).
+		Render(" (press c to clear)")
+	return badge + clearHint
 }
 
 func (m Model) renderSelectedRepoPathBar() string {
@@ -278,6 +344,15 @@ func (m Model) renderStats() string {
 			Render(fmt.Sprintf("☑ %d selected", selected))
 		stats = append(stats, selectedBadge)
 	}
+	if bookmarks := m.bookmarksCount(); bookmarks > 0 {
+		bookmarksBadge := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#111827")).
+			Background(lipgloss.Color("#FBBF24")).
+			Padding(0, 1).
+			Bold(true).
+			Render(fmt.Sprintf("★ %d bookmarked", bookmarks))
+		stats = append(stats, bookmarksBadge)
+	}
 
 	// Filter indicator with inline hint
 	if m.filterMode != FilterAll {
@@ -337,6 +412,21 @@ func (m Model) renderHelp() string {
 			keyBinding("enter", "apply"),
 			keyBinding("esc", "cancel"),
 		}
+	case StateBookmarkSearch:
+		items = []string{
+			keyBinding("type", "search"),
+			keyBinding("enter", "apply"),
+			keyBinding("esc", "cancel"),
+		}
+	case StateBookmarks:
+		items = []string{
+			keyBinding("↑↓", "nav"),
+			keyBinding("b", "toggle bookmark"),
+			keyBinding("/", "search"),
+			keyBinding("enter", "open"),
+			keyBinding("esc", "all repos"),
+			keyBinding("q", "quit"),
+		}
 	case StateWorkspaceSwitch:
 		// Workspace switch mode help
 		items = []string{
@@ -386,6 +476,8 @@ func (m Model) renderHelp() string {
 		items = []string{
 			keyBinding("↑↓", "nav"),
 			keyBinding("space", "select"),
+			keyBinding("b", "bookmark"),
+			keyBinding("B", "bookmarks"),
 			keyBinding("enter", "open"),
 			keyBinding("a", "actions"),
 			keyBinding("l", "logs"),

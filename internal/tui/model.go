@@ -26,6 +26,8 @@ const (
 	StateReady
 	StateError
 	StateSearching
+	StateBookmarks
+	StateBookmarkSearch
 	StateWorkspaceSwitch
 	StateGitAction
 	StateOpenRepo
@@ -80,6 +82,8 @@ type Model struct {
 	sortMode      SortMode
 	filterMode    FilterMode
 	searchQuery   string
+	bookmarkInput textinput.Model
+	bookmarkQuery string
 	// Workspace switch state
 	workspaceInput  textinput.Model
 	workspaceError  string
@@ -153,6 +157,7 @@ type Model struct {
 	currentPage       int
 	pageSize          int
 	selectedRepoPaths map[string]bool
+	bookmarkedPaths   map[string]bool
 }
 
 type tableLayout struct {
@@ -220,6 +225,11 @@ func NewModel(cfg *config.Config) Model {
 	wi.CharLimit = 200
 	wi.Width = 40
 
+	bi := textinput.New()
+	bi.Placeholder = "Fuzzy search bookmarks..."
+	bi.CharLimit = 80
+	bi.Width = 42
+
 	ai := textinput.New()
 	ai.Placeholder = "branch name (e.g. main or feature/my-work)"
 	ai.CharLimit = 100
@@ -249,6 +259,7 @@ func NewModel(cfg *config.Config) Model {
 		cfg:               cfg,
 		table:             t,
 		textInput:         ti,
+		bookmarkInput:     bi,
 		workspaceInput:    wi,
 		gitActionInput:    ai,
 		commandInput:      ci,
@@ -261,6 +272,7 @@ func NewModel(cfg *config.Config) Model {
 		currentPage:       0,
 		pageSize:          cfg.PageSize,
 		selectedRepoPaths: map[string]bool{},
+		bookmarkedPaths:   bookmarkLookup(cfg.Bookmarks),
 	}
 }
 
@@ -289,9 +301,13 @@ func (m Model) GetSelectedRepo() *model.Repo {
 // applyFilter filters repos based on current filter mode and search query
 func (m *Model) applyFilter() {
 	m.filteredRepos = make([]model.Repo, 0, len(m.repos))
-	query := strings.ToLower(strings.TrimSpace(m.searchQuery))
+	query := strings.ToLower(strings.TrimSpace(m.activeSearchQuery()))
+	bookmarkOnly := m.isBookmarksView()
 
 	for _, r := range m.repos {
+		if bookmarkOnly && !m.bookmarkedPaths[r.Path] {
+			continue
+		}
 		// Apply filter mode
 		switch m.filterMode {
 		case FilterDirty:
@@ -507,6 +523,9 @@ func (m Model) reposToRows(repos []model.Repo) []table.Row {
 		if r.Status.IsDirty {
 			status = "● Dirty"
 		}
+		if m.bookmarkedPaths[r.Path] {
+			status = "★ " + status
+		}
 
 		selected := " "
 		if m.selectedRepoPaths[r.Path] {
@@ -550,6 +569,9 @@ func (m *Model) resizeTable() {
 	usedHeight := 9 // header/stats/legend/help/app padding/newlines
 	if m.state == StateSearching || m.searchQuery != "" {
 		usedHeight += 2 // search row + spacing
+	}
+	if m.isBookmarksView() {
+		usedHeight += 2
 	}
 	if m.statusMsg != "" {
 		usedHeight++
@@ -651,6 +673,88 @@ func (m *Model) syncSelectionsWithRepos() {
 			delete(m.selectedRepoPaths, path)
 		}
 	}
+}
+
+func bookmarkLookup(paths []string) map[string]bool {
+	result := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		result[path] = true
+	}
+	return result
+}
+
+func (m Model) activeSearchQuery() string {
+	if m.state == StateBookmarks || m.state == StateBookmarkSearch {
+		return m.bookmarkQuery
+	}
+	return m.searchQuery
+}
+
+func (m Model) isBookmarksView() bool {
+	return m.state == StateBookmarks || m.state == StateBookmarkSearch
+}
+
+func (m Model) bookmarksCount() int {
+	return len(m.bookmarkedPaths)
+}
+
+func (m Model) isBookmarked(path string) bool {
+	return m.bookmarkedPaths[path]
+}
+
+func (m *Model) syncConfigBookmarks() error {
+	if m.cfg == nil {
+		return nil
+	}
+	paths := make([]string, 0, len(m.bookmarkedPaths))
+	for path := range m.bookmarkedPaths {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	m.cfg.Bookmarks = paths
+	return m.cfg.Save()
+}
+
+func (m *Model) toggleCurrentRepoBookmark() (bool, bool, error) {
+	repo := m.GetSelectedRepo()
+	if repo == nil {
+		return false, false, nil
+	}
+
+	bookmarked := !m.bookmarkedPaths[repo.Path]
+	if bookmarked {
+		m.bookmarkedPaths[repo.Path] = true
+	} else {
+		delete(m.bookmarkedPaths, repo.Path)
+	}
+
+	if err := m.syncConfigBookmarks(); err != nil {
+		if bookmarked {
+			delete(m.bookmarkedPaths, repo.Path)
+		} else {
+			m.bookmarkedPaths[repo.Path] = true
+		}
+		return false, false, err
+	}
+	return true, bookmarked, nil
+}
+
+func (m *Model) enterBookmarksMode() {
+	m.state = StateBookmarks
+	m.resetPage()
+	m.resizeTable()
+	m.updateTable()
+}
+
+func (m *Model) exitBookmarksMode() {
+	m.state = StateReady
+	m.bookmarkInput.Blur()
+	m.resizeTable()
+	m.updateTable()
 }
 
 func (m *Model) toggleCurrentRepoSelection() bool {

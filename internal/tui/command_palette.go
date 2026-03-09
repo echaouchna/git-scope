@@ -60,6 +60,8 @@ func (m *Model) exitCommandPaletteMode() {
 func (m Model) commandPaletteItems() []commandItem {
 	items := []commandItem{
 		{label: "Rescan repositories", key: "rescan"},
+		{label: "Open bookmarks", key: "bookmarks"},
+		{label: "Toggle bookmark for selected repo", key: "toggle_bookmark"},
 		{label: "Open Git actions", key: "actions"},
 		{label: "Toggle filter mode", key: "filter"},
 		{label: "Cycle sort mode", key: "sort"},
@@ -94,7 +96,11 @@ func (m Model) filteredCommandItems() []commandItem {
 	}
 	result := make([]commandItem, 0, len(items))
 	for _, item := range items {
-		if strings.Contains(strings.ToLower(item.label), query) || strings.Contains(strings.ToLower(item.key), query) {
+		fields := []searchField{
+			{value: strings.ToLower(item.label), allowFuzzy: true},
+			{value: strings.ToLower(item.key), allowFuzzy: true},
+		}
+		if matchesAllSearchTerms(query, fields) {
 			result = append(result, item)
 		}
 	}
@@ -169,6 +175,8 @@ func (m Model) shortcutsEntries() []string {
 		"Navigation: ↑/↓ move cursor",
 		"Navigation: [/] previous/next page",
 		"Navigation: Enter open project menu",
+		"Bookmarks: b toggle bookmark on current repo",
+		"Bookmarks: B open bookmarks screen",
 		"Selection: Space select/deselect current repo",
 		"Selection: Ctrl+A select/deselect all filtered repos",
 		"Actions: a open Git actions modal",
@@ -192,6 +200,31 @@ func (m Model) executeCommandItem(item commandItem) (tea.Model, tea.Cmd) {
 		m.state = StateLoading
 		m.statusMsg = "Rescanning..."
 		return m, scanReposCmd(m.cfg, true)
+	case "bookmarks":
+		m.enterBookmarksMode()
+		if m.bookmarksCount() == 0 {
+			m.statusMsg = "No bookmarks yet. Press b on a repo to add one."
+		} else {
+			m.statusMsg = fmt.Sprintf("Showing %d bookmarked repos", m.bookmarksCount())
+		}
+		return m, nil
+	case "toggle_bookmark":
+		changed, bookmarked, err := m.toggleCurrentRepoBookmark()
+		if err != nil {
+			m.statusMsg = "⚠ failed to save bookmarks: " + err.Error()
+			return m, nil
+		}
+		if !changed {
+			m.statusMsg = "No repo selected"
+			return m, nil
+		}
+		m.updateTable()
+		if bookmarked {
+			m.statusMsg = "Bookmarked repo"
+		} else {
+			m.statusMsg = "Removed bookmark"
+		}
+		return m, nil
 	case "actions":
 		return m, m.enterGitActionMode()
 	case "filter":

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - Unreleased
+
+### Added
+- Persistent repository bookmarks stored in config and preserved across rescans/restarts.
+- Dedicated bookmarks screen for viewing only bookmarked repositories.
+- Fuzzy bookmark search within the bookmarks screen.
+- Command Palette entries for opening bookmarks and toggling the current repository bookmark.
+
+### Changed
+- Repository rows now visually mark bookmarked repositories.
+- Command Palette search now uses fuzzy matching for easier command discovery.
+- Shortcuts/help text now includes bookmark actions (`b` to toggle, `B` to open bookmarks).
+
 ## [1.3.0] - 2026-03-08
 
 ### Added

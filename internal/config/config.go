@@ -40,14 +40,20 @@ ignore:
 # Editor to open repos in (default: code)
 # Options: code, idea, nvim, vim, etc.
 editor: code
+
+# Pinned repos shown in the bookmarks screen.
+# bookmarks:
+#   - ~/code/git-scope
 `
 
 // Config holds the application configuration
 type Config struct {
-	Roots    []string `yaml:"roots"`
-	Ignore   []string `yaml:"ignore"`
-	Editor   string   `yaml:"editor"`
-	PageSize int      `yaml:"pageSize,omitempty"`
+	Roots      []string `yaml:"roots"`
+	Ignore     []string `yaml:"ignore"`
+	Editor     string   `yaml:"editor"`
+	PageSize   int      `yaml:"pageSize,omitempty"`
+	Bookmarks  []string `yaml:"bookmarks,omitempty"`
+	ConfigPath string   `yaml:"-"`
 }
 
 // defaultConfig returns sensible defaults
@@ -97,10 +103,14 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	cfg.ConfigPath = path
 
 	// Expand ~ in paths
 	for i, root := range cfg.Roots {
 		cfg.Roots[i] = expandPath(root)
+	}
+	for i, bookmark := range cfg.Bookmarks {
+		cfg.Bookmarks[i] = expandPath(bookmark)
 	}
 
 	// Ensure pageSize has a sensible value
@@ -203,5 +213,34 @@ func CreateConfig(path string, roots []string, editor string) error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
+	return nil
+}
+
+// Save writes the current config back to disk.
+func (c *Config) Save() error {
+	if c == nil {
+		return fmt.Errorf("config is nil")
+	}
+	if c.ConfigPath == "" {
+		return fmt.Errorf("config path is empty")
+	}
+
+	dir := filepath.Dir(c.ConfigPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	clone := *c
+	clone.ConfigPath = ""
+
+	data, err := yaml.Marshal(&clone)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	content := "# git-scope configuration\n# Edit this file to customize scanning behavior\n\n" + string(data)
+	if err := os.WriteFile(c.ConfigPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
 	return nil
 }
